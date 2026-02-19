@@ -86,7 +86,6 @@ def query(question: str, use_hybrid: bool = True) -> dict:
 
 if __name__ == "__main__":
     import sys
-    import json
 
     # Health check
     llm = LLMClient()

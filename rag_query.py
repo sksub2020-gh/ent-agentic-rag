@@ -11,6 +11,8 @@ from ingestion.embedder import MpetEmbedder
 from retrieval.milvus_store import MilvusLiteStore
 from retrieval.bm25_store import BM25SStore
 from retrieval.hybrid_retriever import HybridRetriever, FlashRankReranker
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="milvus_lite")
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
@@ -45,7 +47,7 @@ def query(question: str, use_hybrid: bool = True) -> dict:
     Returns dict with answer, chunks, and scores for inspection.
     """
     embedder = MpetEmbedder()
-    vector_store = MilvusLiteStore()
+    vector_store = MilvusLiteStore(embedder.dimension)
     sparse_store = BM25SStore()
     llm = LLMClient()
     reranker = FlashRankReranker()

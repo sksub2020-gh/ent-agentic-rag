@@ -23,9 +23,9 @@ class IngestionPipeline:
 
     def __init__(self):
         logger.info("Initializing ingestion pipeline...")
-        self.chunker = DoclingHybridChunker(MpetEmbedder.get_tokenizer())
         self.embedder = MpetEmbedder()
-        self.vector_store = MilvusLiteStore()
+        self.chunker = DoclingHybridChunker(self.embedder.tokenizer)
+        self.vector_store = MilvusLiteStore(self.embedder.dimension)
         self.sparse_store = BM25SStore()
 
     def ingest_file(self, file_path: str) -> list[Chunk]:

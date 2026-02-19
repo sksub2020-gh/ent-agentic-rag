@@ -3,7 +3,8 @@ Milvus-Lite vector store — local, no server needed.
 Implements VectorStoreBase → swap to Pinecone by writing PineconeStore(VectorStoreBase).
 """
 import logging
-from pymilvus import MilvusClient
+import json
+from pymilvus import MilvusClient, DataType
 
 from core.interfaces import VectorStoreBase, Chunk, RetrievedChunk
 from config.settings import config
@@ -25,35 +26,80 @@ class MilvusLiteStore(VectorStoreBase):
     The rest of the pipeline never changes.
     """
 
-    def __init__(self):
+    def __init__(self, dimension: int):
         import os
-        os.makedirs("./data", exist_ok=True)
+        os.makedirs("./data/index", exist_ok=True)
 
         self.client = MilvusClient(uri=config.milvus.uri)
         self.collection = config.milvus.collection_name
-        self._ensure_collection()
+        self._ensure_collection(dimension)
         logger.info(f"MilvusLiteStore ready → {config.milvus.uri} | collection: {self.collection}")
 
-    def _ensure_collection(self):
-        """Create collection if it doesn't exist."""
-        if not self.client.has_collection(self.collection):
-            self.client.create_collection(
-                collection_name=self.collection,
-                dimension=config.embedding.dimension,
-                metric_type=config.milvus.metric_type,
-                id_type="string",
-                max_length=128,          # chunk_id max length
-            )
-            logger.info(f"Collection '{self.collection}' created")
-        else:
+    def _ensure_collection(self, dimension):
+        """
+        Create collection with explicit schema + vector index.
+
+        Root cause of the original error: create_collection() shorthand always
+        creates a field named 'id' regardless of id_type param. We must use
+        the explicit schema API to define chunk_id as the primary key.
+        """
+        if self.client.has_collection(self.collection):
             logger.info(f"Collection '{self.collection}' already exists")
+            return
+
+        # ── Define schema explicitly ──────────────────────────────────────
+        schema = self.client.create_schema(auto_id=False, enable_dynamic_field=False)
+
+        schema.add_field(
+            field_name=FIELD_ID,
+            datatype=DataType.VARCHAR,
+            max_length=128,
+            is_primary=True,
+        )
+        schema.add_field(
+            field_name=FIELD_DOC_ID,
+            datatype=DataType.VARCHAR,
+            max_length=64,
+        )
+        schema.add_field(
+            field_name=FIELD_CONTENT,
+            datatype=DataType.VARCHAR,
+            max_length=8192,
+        )
+        schema.add_field(
+            field_name=FIELD_EMBEDDING,
+            datatype=DataType.FLOAT_VECTOR,
+            dim=dimension,
+        )
+        schema.add_field(
+            field_name=FIELD_METADATA,
+            datatype=DataType.VARCHAR,
+            max_length=2048,
+        )
+
+        # ── Define vector index ───────────────────────────────────────────
+        # Milvus-Lite only supports: FLAT, IVF_FLAT, AUTOINDEX
+        # AUTOINDEX = best available for the deployment (FLAT for lite, HNSW for full Milvus)
+        index_params = self.client.prepare_index_params()
+        index_params.add_index(
+            field_name=FIELD_EMBEDDING,
+            index_type="AUTOINDEX",
+            metric_type=config.milvus.metric_type,
+            params={"M": 16, "efConstruction": 256},
+        )
+
+        self.client.create_collection(
+            collection_name=self.collection,
+            schema=schema,
+            index_params=index_params,
+        )
+        logger.info(f"Collection '{self.collection}' created with explicit schema + HNSW index")
 
     def upsert(self, chunks: list[Chunk]) -> None:
         """Insert chunks. Chunks must have embeddings set before calling."""
         if not chunks:
             return
 
-        import json
         data = []
         for chunk in chunks:
             if not chunk.embedding:
@@ -73,7 +119,6 @@ class MilvusLiteStore(VectorStoreBase):
 
     def search(self, query_embedding: list[float], top_k: int) -> list[RetrievedChunk]:
         """Dense similarity search."""
-        import json
         results = self.client.search(
             collection_name=self.collection,
             data=[query_embedding],

@@ -10,7 +10,7 @@ class LLMConfig:
     provider: str = "ollama"
     base_url: str = "http://localhost:11434/v1"
     api_key: str = "ollama"  # Required by SDK, ignored by Ollama
-    model: str = "mistral"
+    model: str = "mistral:7b"
     temperature: float = 0.1
     max_tokens: int = 1024
 
@@ -18,20 +18,19 @@ class LLMConfig:
 @dataclass
 class EmbeddingConfig:
     model_name: str = "sentence-transformers/all-mpnet-base-v2"  # mpeT
-    dimension: int = 768
     device: str = "cpu"  # Switch to "cuda" if GPU available
 
 
 @dataclass
 class MilvusConfig:
-    uri: str = "./data/milvus_lite.db"  # Local file-based Milvus-Lite
+    uri: str = "./data/index/milvus_lite.db"  # Local file-based Milvus-Lite
     collection_name: str = "rag_docs"
     metric_type: str = "COSINE"
 
 
 @dataclass
 class BM25Config:
-    index_path: str = "./data/bm25_index"
+    index_path: str = "./data/index/bm25_index"
     method: str = "lucene"  # lucene | bm25+ | robertson
 
 

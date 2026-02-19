@@ -15,6 +15,7 @@ Each metric is 0.0–1.0. Enterprise targets:
 
 RAGAS uses an LLM internally for evaluation. We point it at Ollama to stay fully local.
 """
+
 import json
 import logging
 from dataclasses import dataclass, field, asdict
@@ -43,39 +44,42 @@ RESULTS_DIR = Path("./evaluation/results")
 
 # Enterprise quality thresholds
 THRESHOLDS = {
-    "faithfulness":      0.85,
-    "answer_relevancy":  0.80,
+    "faithfulness": 0.85,
+    "answer_relevancy": 0.80,
     "context_precision": 0.75,
-    "context_recall":    0.70,
+    "context_recall": 0.70,
 }
 
 
 @dataclass
 class EvalResult:
     """Results for a single evaluation run."""
+
     timestamp: str
     n_samples: int
     scores: dict[str, float]
-    passed: dict[str, bool]         # Did each metric meet threshold?
+    passed: dict[str, bool]  # Did each metric meet threshold?
     overall_pass: bool
     per_sample: list[dict] = field(default_factory=list)
     metadata: dict = field(default_factory=dict)
 
     def summary(self) -> str:
         lines = [
-            f"\n{'═'*55}",
+            f"\n{'═' * 55}",
             f"  RAGAS Evaluation — {self.timestamp}",
             f"  Samples: {self.n_samples}",
-            f"{'─'*55}",
+            f"{'─' * 55}",
         ]
         for metric, score in self.scores.items():
             threshold = THRESHOLDS.get(metric, 0.0)
             status = "✅" if self.passed.get(metric) else "❌"
             bar = _score_bar(score)
-            lines.append(f"  {status} {metric:<22} {score:.3f}  {bar}  (threshold: {threshold})")
-        lines.append(f"{'─'*55}")
+            lines.append(
+                f"  {status} {metric:<22} {score:.3f}  {bar}  (threshold: {threshold})"
+            )
+        lines.append(f"{'─' * 55}")
         lines.append(f"  Overall: {'✅ PASS' if self.overall_pass else '❌ FAIL'}")
-        lines.append(f"{'═'*55}\n")
+        lines.append(f"{'═' * 55}\n")
         return "\n".join(lines)
 
 
@@ -94,15 +98,15 @@ class RagasEvaluator:
         # Point RAGAS at Ollama via LangChain wrapper
         # RAGAS needs LangChain-compatible LLM/embedder interfaces
         eval_llm = ChatOpenAI(
-            base_url=config.ollama.base_url,
-            api_key=config.ollama.api_key,
-            model=config.ollama.model,
+            base_url=config.llm.base_url,
+            api_key=config.llm.api_key,
+            model=config.llm.model,
             temperature=0.0,
         )
         eval_embedder = OpenAIEmbeddings(
-            base_url=config.ollama.base_url,
-            api_key=config.ollama.api_key,
-            model="nomic-embed-text",   # Ollama embedding model for RAGAS internals
+            base_url=config.llm.base_url,
+            api_key=config.llm.api_key,
+            model="nomic-embed-text",  # Ollama embedding model for RAGAS internals
         )
 
         self.ragas_llm = LangchainLLMWrapper(eval_llm)
@@ -145,22 +149,21 @@ class RagasEvaluator:
 
         # ── Step 1: Run pipeline on each sample ───────────────────────────
         ragas_data = {
-            "question":           [],
-            "answer":             [],
-            "contexts":           [],   # Retrieved chunk contents
-            "ground_truth":       [],   # Expected answer (for context_recall)
+            "question": [],
+            "answer": [],
+            "contexts": [],  # Retrieved chunk contents
+            "ground_truth": [],  # Expected answer (for context_recall)
         }
         per_sample_meta = []
 
         for i, sample in enumerate(samples):
-            logger.info(f"  [{i+1}/{len(samples)}] {sample.question[:60]}")
+            logger.info(f"  [{i + 1}/{len(samples)}] {sample.question[:60]}")
             try:
                 result = run_query(sample.question, app=app)
 
                 # Pull retrieved context texts
                 contexts = [
-                    rc.chunk.content
-                    for rc in result.get("retrieved_chunks_raw", [])
+                    rc.chunk.content for rc in result.get("retrieved_chunks_raw", [])
                 ] or [""]  # RAGAS requires non-empty list
 
                 ragas_data["question"].append(sample.question)
@@ -168,19 +171,21 @@ class RagasEvaluator:
                 ragas_data["contexts"].append(contexts)
                 ragas_data["ground_truth"].append(sample.ground_truth_answer)
 
-                per_sample_meta.append({
-                    "question":       sample.question,
-                    "answer":         result["answer"],
-                    "ground_truth":   sample.ground_truth_answer,
-                    "question_type":  sample.question_type,
-                    "route":          result.get("route", ""),
-                    "grounded":       result.get("grounded", False),
-                    "retry_count":    result.get("retry_count", 0),
-                    "n_contexts":     len(contexts),
-                })
+                per_sample_meta.append(
+                    {
+                        "question": sample.question,
+                        "answer": result["answer"],
+                        "ground_truth": sample.ground_truth_answer,
+                        "question_type": sample.question_type,
+                        "route": result.get("route", ""),
+                        "grounded": result.get("grounded", False),
+                        "retry_count": result.get("retry_count", 0),
+                        "n_contexts": len(contexts),
+                    }
+                )
 
             except Exception as e:
-                logger.error(f"  Pipeline failed for sample {i+1}: {e}")
+                logger.error(f"  Pipeline failed for sample {i + 1}: {e}")
                 # Include failed sample with empty answer so RAGAS still scores it
                 ragas_data["question"].append(sample.question)
                 ragas_data["answer"].append("")
@@ -198,10 +203,10 @@ class RagasEvaluator:
         )
 
         scores = {
-            "faithfulness":      round(float(ragas_result["faithfulness"]), 4),
-            "answer_relevancy":  round(float(ragas_result["answer_relevancy"]), 4),
+            "faithfulness": round(float(ragas_result["faithfulness"]), 4),
+            "answer_relevancy": round(float(ragas_result["answer_relevancy"]), 4),
             "context_precision": round(float(ragas_result["context_precision"]), 4),
-            "context_recall":    round(float(ragas_result["context_recall"]), 4),
+            "context_recall": round(float(ragas_result["context_recall"]), 4),
         }
 
         passed = {m: scores[m] >= THRESHOLDS[m] for m in scores}

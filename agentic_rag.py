@@ -7,6 +7,7 @@ Usage:
   python agentic_rag.py "What is X?"             # single query
   python agentic_rag.py --stream "What is X?"    # stream tokens (future)
 """
+
 import logging
 import sys
 from dotenv import load_dotenv
@@ -26,23 +27,27 @@ def print_result(result: dict) -> None:
     print(f"  Query   : {result['query']}")
     print(f"  Route   : {result['route']} ({result['router_reasoning']})")
     print(f"  Retries : {result['retry_count']}")
-    print(f"  Grounded: {'✅' if result['grounded'] else '❌'} — {result['critique_reasoning']}")
+    print(
+        f"  Grounded: {'✅' if result['grounded'] else '❌'} — {result['critique_reasoning']}"
+    )
     print("─" * 60)
     print(f"\n{result['answer']}\n")
 
     if result["sources"]:
         print("📚 Sources:")
         for s in result["sources"]:
-            print(f"  [{s['index']}] {s['source']} | Page {s['page']} | score={s['score']}")
+            print(
+                f"  [{s['index']}] {s['source']} | Page {s['page']} | score={s['score']}"
+            )
     print("═" * 60 + "\n")
 
 
 def main():
     from agents.graph import build_rag_graph, run_query
-    from core.llm_client import OllamaClient
+    from core.llm_client import LLMClient
 
     # Health check before building the graph
-    llm = OllamaClient()
+    llm = LLMClient()
     if not llm.health_check():
         print("⚠️  Ollama not reachable. Start it: ollama serve && ollama pull mistral")
         sys.exit(1)

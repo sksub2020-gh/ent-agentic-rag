@@ -8,7 +8,7 @@ from pathlib import Path
 
 from docling.document_converter import DocumentConverter
 from docling.chunking import HybridChunker
-from docling_core.transforms.chunker.tokenizer import OpenAITokenizerWrapper
+# from docling_core.transforms.chunker.tokenizer import OpenAITokenizerWrapper
 
 from core.interfaces import ChunkerBase, Document, Chunk
 from config.settings import config
@@ -24,10 +24,9 @@ class DoclingHybridChunker(ChunkerBase):
     It respects headings, tables, lists — doesn't blindly split mid-sentence.
     """
 
-    def __init__(self):
+    def __init__(self, tokenizer):
         self.converter = DocumentConverter()
         # Tokenizer keeps chunk sizes meaningful for your embedding model
-        tokenizer = OpenAITokenizerWrapper()
         self.chunker = HybridChunker(
             tokenizer=tokenizer,
             max_tokens=config.docling.max_tokens,

@@ -4,4 +4,14 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "bm25s[full]>=0.3.0",
+    "docling>=2.74.0",
+    "openai>=2.21.0",
+    "pymilvus[milvus-lite]>=2.6.9",
+    "python-dotenv>=1.2.1",
+    "sentence-transformers>=5.2.3",
+    "setuptools<81",
+    "tqdm>=4.67.3",
+    "transformers>=4.57.6",
+]

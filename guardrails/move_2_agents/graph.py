@@ -21,6 +21,7 @@ Graph structure:
     ↓
   END
 """
+
 import logging
 from functools import partial
 
@@ -31,12 +32,14 @@ from agents.router_node import router_node
 from agents.rag_node import rag_node
 from agents.critique_node import critique_node, should_retry
 from guardrails.guard_runner import (
-    GuardRunner, input_guard_node, output_guard_node,
+    GuardRunner,
+    input_guard_node,
+    output_guard_node,
     should_continue_after_input_guard,
 )
 from guardrails.input_guards import DEFAULT_INPUT_GUARDS
 from guardrails.output_guards import DEFAULT_OUTPUT_GUARDS
-from core.llm_client import OllamaClient
+from core.llm_client import LLMClient
 from core.interfaces import LLMClientBase
 from retrieval.hybrid_retriever import HybridRetriever
 from ingestion.embedder import MpetEmbedder
@@ -66,30 +69,30 @@ def build_rag_graph(
         Compiled LangGraph app ready for .invoke() / .stream()
     """
     # ── Instantiate dependencies if not injected ──────────────────────────
-    llm = llm or OllamaClient()
+    llm = llm or LLMClient()
     retriever = retriever or HybridRetriever(
         vector_store=MilvusLiteStore(),
         sparse_store=BM25SStore(),
         embedder=MpetEmbedder(),
         reranker=FlashRankReranker(),
     )
-    input_runner  = GuardRunner(input_guards  or DEFAULT_INPUT_GUARDS)
+    input_runner = GuardRunner(input_guards or DEFAULT_INPUT_GUARDS)
     output_runner = GuardRunner(output_guards or DEFAULT_OUTPUT_GUARDS)
 
     # ── Bind dependencies to nodes via partial ────────────────────────────
-    bound_input_guard  = partial(input_guard_node,  runner=input_runner)
-    bound_router       = partial(router_node,        llm=llm)
-    bound_rag          = partial(rag_node,           llm=llm, retriever=retriever)
-    bound_critique     = partial(critique_node,      llm=llm)
-    bound_output_guard = partial(output_guard_node,  runner=output_runner)
+    bound_input_guard = partial(input_guard_node, runner=input_runner)
+    bound_router = partial(router_node, llm=llm)
+    bound_rag = partial(rag_node, llm=llm, retriever=retriever)
+    bound_critique = partial(critique_node, llm=llm)
+    bound_output_guard = partial(output_guard_node, runner=output_runner)
 
     # ── Build graph ───────────────────────────────────────────────────────
     graph = StateGraph(AgentState)
 
-    graph.add_node("input_guard",  bound_input_guard)
-    graph.add_node("router",       bound_router)
-    graph.add_node("rag",          bound_rag)
-    graph.add_node("critique",     bound_critique)
+    graph.add_node("input_guard", bound_input_guard)
+    graph.add_node("router", bound_router)
+    graph.add_node("rag", bound_rag)
+    graph.add_node("critique", bound_critique)
     graph.add_node("output_guard", bound_output_guard)
 
     # Entry point
@@ -100,8 +103,8 @@ def build_rag_graph(
         "input_guard",
         should_continue_after_input_guard,
         {
-            "end":      END,        # Blocked — skip everything
-            "continue": "router",   # Pass — proceed normally
+            "end": END,  # Blocked — skip everything
+            "continue": "router",  # Pass — proceed normally
         },
     )
 
@@ -116,8 +119,8 @@ def build_rag_graph(
         "critique",
         should_retry,
         {
-            "retry": "rag",          # Re-retrieve and regenerate
-            "end":   "output_guard", # Done with RAG — validate output
+            "retry": "rag",  # Re-retrieve and regenerate
+            "end": "output_guard",  # Done with RAG — validate output
         },
     )
 
@@ -146,34 +149,34 @@ def run_query(query: str, app=None) -> dict:
         app = build_rag_graph()
 
     initial_state: AgentState = {
-        "query":            query,
-        "route":            "rag",
+        "query": query,
+        "route": "rag",
         "router_reasoning": "",
         "retrieved_chunks": [],
-        "context":          "",
-        "answer":           "",
-        "grounded":         False,
+        "context": "",
+        "answer": "",
+        "grounded": False,
         "critique_reasoning": "",
-        "retry_count":      0,
-        "sources":          [],
-        "blocked":          False,
-        "block_reason":     None,
-        "guard_warnings":   [],
+        "retry_count": 0,
+        "sources": [],
+        "blocked": False,
+        "block_reason": None,
+        "guard_warnings": [],
     }
 
     logger.info(f"[Graph] Running query: '{query[:80]}'")
     final_state = app.invoke(initial_state)
 
     return {
-        "query":              final_state["query"],
-        "answer":             final_state["answer"],
-        "route":              final_state.get("route", ""),
-        "router_reasoning":   final_state.get("router_reasoning", ""),
-        "grounded":           final_state.get("grounded", False),
+        "query": final_state["query"],
+        "answer": final_state["answer"],
+        "route": final_state.get("route", ""),
+        "router_reasoning": final_state.get("router_reasoning", ""),
+        "grounded": final_state.get("grounded", False),
         "critique_reasoning": final_state.get("critique_reasoning", ""),
-        "retry_count":        final_state.get("retry_count", 0),
-        "sources":            final_state.get("sources", []),
-        "blocked":            final_state.get("blocked", False),
-        "block_reason":       final_state.get("block_reason"),
-        "guard_warnings":     final_state.get("guard_warnings", []),
+        "retry_count": final_state.get("retry_count", 0),
+        "sources": final_state.get("sources", []),
+        "blocked": final_state.get("blocked", False),
+        "block_reason": final_state.get("block_reason"),
+        "guard_warnings": final_state.get("guard_warnings", []),
     }

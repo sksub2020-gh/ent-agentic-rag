@@ -4,6 +4,7 @@ Implements EmbedderBase — swap model in config/settings.py.
 """
 import logging
 from sentence_transformers import SentenceTransformer
+from transformers import AutoTokenizer
 
 from core.interfaces import EmbedderBase
 from config.settings import config
@@ -16,12 +17,20 @@ class MpetEmbedder(EmbedderBase):
     Dense embeddings via sentence-transformers (all-mpnet-base-v2).
     Model is downloaded once and cached locally by HuggingFace.
     """
+    _tokenizer = None
+
+    @classmethod
+    def get_tokenizer(cls):
+        if cls._tokenizer is None:
+            cls._tokenizer = AutoTokenizer.from_pretrained(config.embedding.model_name)
+        return cls._tokenizer
 
     def __init__(self):
         logger.info(f"Loading embedding model: {config.embedding.model_name}")
         self.model = SentenceTransformer(
             config.embedding.model_name,
             device=config.embedding.device,
+            local_files_only=True
         )
         self.dimension = config.embedding.dimension
         logger.info(f"Embedder ready — dim={self.dimension}, device={config.embedding.device}")

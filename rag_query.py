@@ -3,15 +3,18 @@ Basic RAG query pipeline — Phase 1 smoke test.
 Dense retrieval only (no BM25 yet) to validate the core loop.
 Run after ingestion_pipeline.py.
 """
+
 import logging
 
-from core.llm_client import OllamaClient
+from core.llm_client import LLMClient
 from ingestion.embedder import MpetEmbedder
 from retrieval.milvus_store import MilvusLiteStore
 from retrieval.bm25_store import BM25SStore
 from retrieval.hybrid_retriever import HybridRetriever, FlashRankReranker
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You are a helpful assistant that answers questions based strictly on the provided context.
@@ -44,7 +47,7 @@ def query(question: str, use_hybrid: bool = True) -> dict:
     embedder = MpetEmbedder()
     vector_store = MilvusLiteStore()
     sparse_store = BM25SStore()
-    llm = OllamaClient()
+    llm = LLMClient()
     reranker = FlashRankReranker()
 
     retriever = HybridRetriever(
@@ -84,12 +87,14 @@ if __name__ == "__main__":
     import json
 
     # Health check
-    llm = OllamaClient()
+    llm = LLMClient()
     if not llm.health_check():
         print("⚠️  Ollama not reachable. Start it with: ollama serve")
         sys.exit(1)
 
-    question = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "What is this document about?"
+    question = (
+        " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "What is this document about?"
+    )
     print(f"\n🔍 Query: {question}\n")
 
     result = query(question)

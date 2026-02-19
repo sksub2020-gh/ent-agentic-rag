@@ -1,0 +1,30 @@
+# LLM
+openai>=1.30.0
+
+# Ingestion
+docling>=2.0.0
+docling-core>=2.0.0
+
+# Embeddings
+sentence-transformers>=3.0.0
+
+# Sparse Search
+bm25s[full]>=0.2.0          # [full] adds stemming support
+
+# Vector DB — milvus-lite is bundled inside pymilvus >= 2.4.2
+pymilvus>=2.4.2
+
+# Reranking
+flashrank>=0.2.0
+
+# Agentic
+langgraph>=0.2.0
+
+# Evaluation & Tracing
+langsmith>=0.1.0
+ragas>=0.1.0
+langchain-openai>=0.1.0     # needed by ragas_evaluator.py for LangchainLLMWrapper
+
+# Utilities
+python-dotenv>=1.0.0
+tqdm>=4.66.0

@@ -14,6 +14,7 @@ Graph structure:
     ├─ grounded=True  → END
     └─ grounded=False → back to [rag_node] (max 2 retries)
 """
+
 import logging
 from functools import partial
 
@@ -23,7 +24,7 @@ from agents.state import AgentState
 from agents.router_node import router_node
 from agents.rag_node import rag_node
 from agents.critique_node import critique_node, should_retry
-from core.llm_client import OllamaClient
+from core.llm_client import LLMClient
 from core.interfaces import LLMClientBase
 from retrieval.hybrid_retriever import HybridRetriever
 from ingestion.embedder import MpetEmbedder
@@ -49,26 +50,27 @@ def build_rag_graph(
         Compiled LangGraph app ready for .invoke() / .stream()
     """
     # ── Instantiate dependencies if not injected ──────────────────────────
-    llm = llm or OllamaClient()
+    llm = llm or LLMClient()
+    embedder=MpetEmbedder()
     retriever = retriever or HybridRetriever(
-        vector_store=MilvusLiteStore(),
+        embedder=embedder,
+        vector_store=MilvusLiteStore(embedder.dimension),
         sparse_store=BM25SStore(),
-        embedder=MpetEmbedder(),
         reranker=FlashRankReranker(),
     )
 
     # ── Bind dependencies to nodes via partial (keeps nodes pure functions) ─
     # Why partial? Nodes stay testable in isolation — just call node(state, llm=mock_llm)
-    bound_router   = partial(router_node,  llm=llm)
-    bound_rag      = partial(rag_node,     llm=llm, retriever=retriever)
+    bound_router = partial(router_node, llm=llm)
+    bound_rag = partial(rag_node, llm=llm, retriever=retriever)
     bound_critique = partial(critique_node, llm=llm)
 
     # ── Build graph ──────────────────────────────────────────────────────────
     graph = StateGraph(AgentState)
 
     # Add nodes
-    graph.add_node("router",   bound_router)
-    graph.add_node("rag",      bound_rag)
+    graph.add_node("router", bound_router)
+    graph.add_node("rag", bound_rag)
     graph.add_node("critique", bound_critique)
 
     # Entry point
@@ -83,10 +85,10 @@ def build_rag_graph(
     # Critique → conditional: retry or end
     graph.add_conditional_edges(
         "critique",
-        should_retry,               # Returns "retry" or "end"
+        should_retry,  # Returns "retry" or "end"
         {
-            "retry": "rag",         # Back to RAG node for another attempt
-            "end":   END,           # Done
+            "retry": "rag",  # Back to RAG node for another attempt
+            "end": END,  # Done
         },
     )
 
@@ -125,12 +127,12 @@ def run_query(query: str, app=None) -> dict:
     final_state = app.invoke(initial_state)
 
     return {
-        "query":              final_state["query"],
-        "answer":             final_state["answer"],
-        "route":              final_state["route"],
-        "router_reasoning":   final_state["router_reasoning"],
-        "grounded":           final_state["grounded"],
+        "query": final_state["query"],
+        "answer": final_state["answer"],
+        "route": final_state["route"],
+        "router_reasoning": final_state["router_reasoning"],
+        "grounded": final_state["grounded"],
         "critique_reasoning": final_state["critique_reasoning"],
-        "retry_count":        final_state["retry_count"],
-        "sources":            final_state["sources"],
+        "retry_count": final_state["retry_count"],
+        "sources": final_state["sources"],
     }

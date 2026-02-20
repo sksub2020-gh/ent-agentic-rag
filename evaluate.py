@@ -8,6 +8,7 @@ Usage:
   python evaluate.py all            # build → run → analyze in sequence
   python evaluate.py run --samples 10   # Quick run with subset
 """
+
 import logging
 import sys
 from dotenv import load_dotenv
@@ -23,11 +24,11 @@ logger = logging.getLogger(__name__)
 
 def cmd_build(n_samples: int = 25):
     """Generate and save a golden test set."""
-    from core.llm_client import OllamaClient
+    from core.llm_client import LLMClient
     from evaluation.golden_set import GoldenSetBuilder
 
     print(f"\n📋 Building golden set ({n_samples} samples)...")
-    builder = GoldenSetBuilder(llm=OllamaClient())
+    builder = GoldenSetBuilder(llm=LLMClient())
     samples = builder.generate_from_chunks(n_samples=n_samples)
     builder.save(samples)
     builder.export_csv(samples)
@@ -36,7 +37,9 @@ def cmd_build(n_samples: int = 25):
     print(f"   JSON → ./evaluation/golden_set.json  (used by evaluator)")
     print(f"   CSV  → ./evaluation/golden_set.csv   (review & edit this)")
     print(f"\n⚠️  IMPORTANT: Review golden_set.csv before running evaluation.")
-    print(f"   Auto-generated Q&A pairs may have errors — human review improves eval quality.\n")
+    print(
+        f"   Auto-generated Q&A pairs may have errors — human review improves eval quality.\n"
+    )
 
 
 def cmd_run(n_samples: int | None = None):
@@ -44,10 +47,10 @@ def cmd_run(n_samples: int | None = None):
     from evaluation.golden_set import GoldenSetBuilder, GoldenSample
     from evaluation.ragas_evaluator import RagasEvaluator
     from agents.graph import build_rag_graph
-    from core.llm_client import OllamaClient
+    from core.llm_client import LLMClient
 
     # Load golden set
-    builder = GoldenSetBuilder(llm=OllamaClient())
+    builder = GoldenSetBuilder(llm=LLMClient())
     try:
         samples = builder.load_from_file()
     except FileNotFoundError:
@@ -56,11 +59,14 @@ def cmd_run(n_samples: int | None = None):
 
     if n_samples:
         import random
+
         samples = random.sample(samples, min(n_samples, len(samples)))
         print(f"  Using {len(samples)} samples (subset)")
 
     print(f"\n🔬 Running RAGAS evaluation on {len(samples)} samples...")
-    print(f"   (This will make {len(samples) * 4} LLM calls — may take a few minutes)\n")
+    print(
+        f"   (This will make {len(samples) * 4} LLM calls — may take a few minutes)\n"
+    )
 
     app = build_rag_graph()
     evaluator = RagasEvaluator()
@@ -81,8 +87,8 @@ def cmd_analyze():
 
 def main():
     commands = {
-        "build":   cmd_build,
-        "run":     cmd_run,
+        "build": cmd_build,
+        "run": cmd_run,
         "analyze": cmd_analyze,
     }
 

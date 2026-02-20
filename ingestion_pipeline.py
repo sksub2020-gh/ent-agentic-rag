@@ -23,9 +23,9 @@ class IngestionPipeline:
 
     def __init__(self):
         logger.info("Initializing ingestion pipeline...")
-        self.chunker = DoclingHybridChunker()
         self.embedder = MpetEmbedder()
-        self.vector_store = MilvusLiteStore()
+        self.chunker = DoclingHybridChunker(self.embedder.tokenizer)
+        self.vector_store = MilvusLiteStore(self.embedder.dimension)
         self.sparse_store = BM25SStore()
 
     def ingest_file(self, file_path: str) -> list[Chunk]:
@@ -101,12 +101,12 @@ class IngestionPipeline:
 if __name__ == "__main__":
     import sys
 
-    if len(sys.argv) < 2:
-        print("Usage: python ingestion_pipeline.py <path_to_file_or_dir>")
-        print("Example: python ingestion_pipeline.py ./docs/sample.pdf")
-        sys.exit(1)
+    # if len(sys.argv) < 2:
+    #     print("Usage: python ingestion_pipeline.py <path_to_file_or_dir>")
+    #     print("Example: python ingestion_pipeline.py ./docs/sample.pdf")
+    #     sys.exit(1)
 
-    target = sys.argv[1]
+    target = "./data/raw/docling.pdf"#sys.argv[1]
     pipeline = IngestionPipeline()
 
     path = Path(target)

@@ -10,6 +10,7 @@ from core.interfaces import (
 )
 from config.settings import config
 
+
 logger = logging.getLogger(__name__)
 
 

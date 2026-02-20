@@ -51,10 +51,11 @@ def build_rag_graph(
     """
     # ── Instantiate dependencies if not injected ──────────────────────────
     llm = llm or LLMClient()
+    embedder=MpetEmbedder()
     retriever = retriever or HybridRetriever(
-        vector_store=MilvusLiteStore(),
+        embedder=embedder,
+        vector_store=MilvusLiteStore(embedder.dimension),
         sparse_store=BM25SStore(),
-        embedder=MpetEmbedder(),
         reranker=FlashRankReranker(),
     )
 

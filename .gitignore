@@ -10,3 +10,6 @@ wheels/
 .venv
 **data/**
 pgvector/**
+.DS_Store
+.env
+db_test.py

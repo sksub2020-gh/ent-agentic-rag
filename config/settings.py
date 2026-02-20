@@ -29,14 +29,15 @@ class LLMConfig(BaseSettings):
     temperature: float = 0.1
     max_tokens:  int   = 1024
 
-    model_config = {"env_prefix": "LLM_"}
+    model_config = {"env_prefix": "LLM_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 class EmbeddingConfig(BaseSettings):
     model_name: str       = "sentence-transformers/all-mpnet-base-v2"
-    device:     str       = "cpu"   # Switch to "cuda" if GPU available
+    dimension:  int | None = None
+    device:     str       = "cpu"
 
-    model_config = {"env_prefix": "EMBEDDING_"}
+    model_config = {"env_prefix": "EMBEDDING_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 class MilvusConfig(BaseSettings):
@@ -44,25 +45,24 @@ class MilvusConfig(BaseSettings):
     collection_name: str = "rag_docs"
     metric_type:     str = "COSINE"
 
-    model_config = {"env_prefix": "MILVUS_"}
+    model_config = {"env_prefix": "MILVUS_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 class BM25Config(BaseSettings):
     index_path: str = "./data/index/bm25_index"
-    method:     str = "lucene"       # lucene | bm25+ | robertson
+    method:     str = "lucene"
 
-    model_config = {"env_prefix": "BM25_"}
+    model_config = {"env_prefix": "BM25_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 class RetrievalConfig(BaseSettings):
-    top_k_dense:    int   = 20       # Fetch more, rerank down
+    top_k_dense:    int   = 20
     top_k_sparse:   int   = 20
-    top_k_rerank:   int   = 5        # Final chunks sent to LLM
-    rrf_k:          int   = 60       # RRF constant (standard = 60)
+    top_k_rerank:   int   = 5
+    rrf_k:          int   = 60
     reranker_model: str   = "ms-marco-MiniLM-L-12-v2"
-    # short_chunk_token_threshold: int = 20  # Chunks below this word count bypass reranker
 
-    model_config = {"env_prefix": "RETRIEVAL_"}
+    model_config = {"env_prefix": "RETRIEVAL_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 class DoclingConfig(BaseSettings):
@@ -71,7 +71,16 @@ class DoclingConfig(BaseSettings):
     overlap_tokens:    int  = 32
     supported_formats: list = Field(default=["pdf", "html", "docx"])
 
-    model_config = {"env_prefix": "DOCLING_"}
+    model_config = {"env_prefix": "DOCLING_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+
+
+class SupabaseConfig(BaseSettings):
+    connection_string: str = ""
+    table_name:        str = "rag_chunks"
+
+    model_config = {"env_prefix": "SUPABASE_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+
+
 
 
 class AppConfig(BaseSettings):
@@ -81,7 +90,9 @@ class AppConfig(BaseSettings):
     bm25:      BM25Config      = Field(default_factory=BM25Config)
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
     docling:   DoclingConfig   = Field(default_factory=DoclingConfig)
+    supabase:  SupabaseConfig  = Field(default_factory=SupabaseConfig)
     project_name: str          = "learn-agentic-rag"
+    store_backend: str         = "supabase" # "supabase" | "milvus"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

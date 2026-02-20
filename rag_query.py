@@ -1,83 +1,64 @@
 """
-Basic RAG query pipeline — Phase 1 smoke test.
-Dense retrieval only (no BM25 yet) to validate the core loop.
-Run after ingestion_pipeline.py.
+RAG query CLI entrypoint.
+Usage: python cli/rag_query.py "Your question here"
 """
-
 import logging
-
-from core.llm_client import LLMClient
-from ingestion.embedder import MpetEmbedder
-from retrieval.milvus_store import MilvusLiteStore
-from retrieval.bm25_store import BM25SStore
-from retrieval.hybrid_retriever import HybridRetriever, FlashRankReranker
-import warnings
-warnings.filterwarnings("ignore", category=UserWarning, module="milvus_lite")
+import sys
+from config.settings import config
 
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
 )
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """You are a helpful assistant that answers questions based strictly on the provided context.
-If the answer is not in the context, say "I don't have enough information to answer this."
-Always cite the source document and page number when available."""
 
+def query(question: str) -> dict:
+    from core.llm_client import LLMClient
+    from ingestion.embedder import MpetEmbedder
+    from retrieval.hybrid_retriever import HybridRetriever, FlashRankReranker
+    from agents.rag_node import RAG_SYSTEM_PROMPT, build_context_prompt
 
-def build_context_prompt(query: str, retrieved_chunks) -> str:
-    """Format retrieved chunks into an LLM-ready prompt."""
-    context_blocks = []
-    for i, rc in enumerate(retrieved_chunks, 1):
-        meta = rc.chunk.metadata
-        source = meta.get("source", "unknown")
-        page = meta.get("page", "?")
-        section = meta.get("section", "")
-        header = f"[{i}] Source: {source} | Page: {page}"
-        if section:
-            header += f" | Section: {section}"
-        context_blocks.append(f"{header}\n{rc.chunk.content}")
+    embedder  = MpetEmbedder()
+    llm       = LLMClient()
 
-    context = "\n\n---\n\n".join(context_blocks)
-    return f"Context:\n{context}\n\nQuestion: {query}\n\nAnswer:"
-
-
-def query(question: str, use_hybrid: bool = True) -> dict:
-    """
-    Run a single RAG query.
-    Returns dict with answer, chunks, and scores for inspection.
-    """
-    embedder = MpetEmbedder()
-    vector_store = MilvusLiteStore(embedder.dimension)
-    sparse_store = BM25SStore()
-    llm = LLMClient()
-    reranker = FlashRankReranker()
-
+    if config.store_backend == "supabase":
+        from retrieval.supabase_store import SupabaseStore
+        store = SupabaseStore()
+        vector_store = sparse_store = store
+    elif config.store_backend == "milvus":
+        from retrieval.milvus_store import MilvusLiteStore
+        from retrieval.bm25_store import BM25SStore
+        vector_store = MilvusLiteStore(dimension=embedder.dimension)
+        sparse_store = BM25SStore()
+    else:
+        print(f"⚠️  Vector Backend {config.store_backend} is not implemented.")
+        sys.exit(1)
+    
     retriever = HybridRetriever(
         vector_store=vector_store,
         sparse_store=sparse_store,
         embedder=embedder,
-        reranker=reranker,
+        reranker=FlashRankReranker(),
     )
 
-    # Retrieve
     chunks = retriever.retrieve(question)
-
     if not chunks:
         return {"answer": "No relevant context found.", "chunks": [], "query": question}
 
-    # Build prompt and generate
-    user_prompt = build_context_prompt(question, chunks)
-    answer = llm.generate(system_prompt=SYSTEM_PROMPT, user_prompt=user_prompt)
-
+    answer = llm.generate(
+        system_prompt=RAG_SYSTEM_PROMPT,
+        user_prompt=build_context_prompt(question, chunks),
+    )
     return {
-        "query": question,
+        "query":  question,
         "answer": answer,
         "chunks": [
             {
                 "content": rc.chunk.content[:200] + "...",
-                "score": round(rc.score, 4),
-                "source": rc.chunk.metadata.get("source", ""),
-                "page": rc.chunk.metadata.get("page", ""),
+                "score":   round(rc.score, 4),
+                "source":  rc.chunk.metadata.get("source", ""),
+                "page":    rc.chunk.metadata.get("page", ""),
             }
             for rc in chunks
         ],
@@ -85,23 +66,20 @@ def query(question: str, use_hybrid: bool = True) -> dict:
 
 
 if __name__ == "__main__":
-    import sys
+    from core.llm_client import LLMClient
 
-    # Health check
     llm = LLMClient()
     if not llm.health_check():
-        print("⚠️  Ollama not reachable. Start it with: ollama serve")
+        print("⚠️  Ollama not reachable. Run: ollama serve")
         sys.exit(1)
 
-    question = (
-        " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "What is this document about?"
-    )
+    question = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else "What is this document about?"
     print(f"\n🔍 Query: {question}\n")
 
     result = query(question)
 
     print(f"💬 Answer:\n{result['answer']}\n")
-    print(f"📚 Sources used ({len(result['chunks'])} chunks):")
+    print(f"📚 Sources ({len(result['chunks'])} chunks):")
     for i, chunk in enumerate(result["chunks"], 1):
         print(f"  [{i}] score={chunk['score']} | {chunk['source']} p.{chunk['page']}")
         print(f"       {chunk['content'][:100]}...")

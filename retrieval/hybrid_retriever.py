@@ -10,7 +10,6 @@ from core.interfaces import (
 )
 from config.settings import config
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -97,11 +96,19 @@ def reciprocal_rank_fusion(
 
 class HybridRetriever:
     """
-    Full retrieval pipeline:
+    Full retrieval pipeline with two paths:
+
+    Path A — Supabase (SQL-native RRF):
+      1. hybrid_search() — dense + sparse + RRF in one SQL query
+      2. FlashRank reranking
+
+    Path B — Milvus + BM25S (Python-side RRF):
       1. Dense search (Milvus)
       2. Sparse search (BM25S)
-      3. RRF fusion
+      3. Python RRF fusion
       4. FlashRank reranking
+
+    Path is auto-detected: if vector_store has hybrid_search(), use Path A.
     """
 
     def __init__(
@@ -115,7 +122,11 @@ class HybridRetriever:
         self.sparse_store = sparse_store
         self.embedder = embedder
         self.reranker = reranker or FlashRankReranker()
-        logger.info("HybridRetriever ready")
+        self._use_sql_hybrid = hasattr(vector_store, "hybrid_search")
+        logger.info(
+            f"HybridRetriever ready — "
+            f"{'SQL hybrid (Supabase)' if self._use_sql_hybrid else 'Python RRF (Milvus+BM25S)'}"
+        )
 
     def retrieve(self, query: str, top_k: int | None = None) -> list[RetrievedChunk]:
         """
@@ -124,29 +135,59 @@ class HybridRetriever:
         """
         top_k = top_k or config.retrieval.top_k_rerank
 
-        # 1. Embed query (once, reused for dense search)
+        if self._use_sql_hybrid:
+            fused = self._retrieve_sql(query)
+        else:
+            fused = self._retrieve_python(query)
+
+        # FlashRank reranking — same for both paths
+        reranked = self.reranker.rerank(query, fused, top_k=top_k)
+        logger.info(f"HybridRetriever → {len(reranked)} final chunks for: '{query[:60]}'")
+        return reranked
+
+    def _retrieve_sql(self, query: str) -> list[RetrievedChunk]:
+        """
+        Path A: single SQL query handles dense + sparse + RRF.
+        Supabase round trips: 1 (embed) + 1 (hybrid_search) = 2 total.
+        """
         query_embedding = self.embedder.embed_query(query)
 
-        # 2. Dense retrieval
+        # Fetch more candidates than top_k_rerank so FlashRank has room to work
+        candidate_k = max(config.retrieval.top_k_dense, config.retrieval.top_k_sparse)
+
+        fused = self.vector_store.hybrid_search(
+            query_embedding=query_embedding,
+            query_text=query,
+            top_k=candidate_k,
+            rrf_k=config.retrieval.rrf_k,
+        )
+        logger.debug(f"SQL hybrid: {len(fused)} fused candidates")
+        return fused
+
+    def _retrieve_python(self, query: str) -> list[RetrievedChunk]:
+        """
+        Path B: separate dense + sparse calls, fused in Python via RRF.
+        Used for Milvus + BM25S.
+        """
+        query_embedding = self.embedder.embed_query(query)
+
         dense_results = self.vector_store.search(
             query_embedding, top_k=config.retrieval.top_k_dense
         )
         logger.debug(f"Dense: {len(dense_results)} results")
 
-        # 3. Sparse retrieval
-        sparse_results = self.sparse_store.search(
-            query, top_k=config.retrieval.top_k_sparse
-        )
+        if hasattr(self.sparse_store, "search_sparse"):
+            sparse_results = self.sparse_store.search_sparse(
+                query, top_k=config.retrieval.top_k_sparse
+            )
+        else:
+            sparse_results = self.sparse_store.search(
+                query, top_k=config.retrieval.top_k_sparse
+            )
         logger.debug(f"Sparse: {len(sparse_results)} results")
 
-        # 4. RRF fusion
         fused = reciprocal_rank_fusion(
             dense_results, sparse_results, k=config.retrieval.rrf_k
         )
-        logger.debug(f"After RRF fusion: {len(fused)} unique chunks")
-
-        # 5. Rerank
-        reranked = self.reranker.rerank(query, fused, top_k=top_k)
-        logger.info(f"HybridRetriever → {len(reranked)} final chunks for query: '{query[:60]}'")
-
-        return reranked
+        logger.debug(f"After Python RRF: {len(fused)} unique chunks")
+        return fused

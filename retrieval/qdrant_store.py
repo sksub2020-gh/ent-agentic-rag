@@ -53,7 +53,7 @@ class QdrantStore(VectorStoreBase, SparseStoreBase):
         else:
             self.client = QdrantClient(
                 url=config.qdrant.url,
-                api_key=config.qdrant.api_key or None,
+                api_key=config.qdrant.api_key.get_secret_value() or None,
             )
             logger.info(f"QdrantStore → remote: {config.qdrant.url}")
 

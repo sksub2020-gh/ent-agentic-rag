@@ -75,17 +75,10 @@ class DoclingConfig(BaseSettings):
 
 
 class SupabaseConfig(BaseSettings):
-    connection_string: str = ""
+    connection_string: SecretStr = ""
     table_name:        str = "rag_chunks"
 
     model_config = {"env_prefix": "SUPABASE_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
-
-# class LangchainConfig(BaseSettings):
-#     tracing_v2: str = False
-#     api_key: SecretStr = ""
-#     project: str = "learn-agentic-rag"
-
-#     model_config = {"env_prefix": "LANGCHAIN_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 class QdrantConfig(BaseSettings):
     """
@@ -106,7 +99,7 @@ class QdrantConfig(BaseSettings):
     mode:            str       = "local"            # local | memory | remote
     path:            str       = "./data/index/qdrant"    # used when mode=local
     url:             str       = "http://localhost:6333"  # used when mode=remote
-    api_key:         str       = ""                 # Qdrant Cloud only
+    api_key:         SecretStr = ""                 # Qdrant Cloud only
     collection_name: str       = "rag_chunks"
     dimension:       int | None = None              # auto-resolved from embedder
 

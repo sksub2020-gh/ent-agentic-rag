@@ -52,7 +52,7 @@ class SupabaseStore(VectorStoreBase, SparseStoreBase):
 
     def __init__(self):
         print(config)
-        self.conn = psycopg2.connect(config.supabase.connection_string)
+        self.conn = psycopg2.connect(config.supabase.connection_string.get_secret_value())
         self.conn.autocommit = False
         register_vector(self.conn)   # enables vector <=> operator
         self.table = config.supabase.table_name

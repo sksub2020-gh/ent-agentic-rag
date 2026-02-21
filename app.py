@@ -8,9 +8,9 @@ Two modes toggled from sidebar:
 """
 import logging
 import streamlit as st
-from dotenv import load_dotenv
-
-load_dotenv()
+# from dotenv import load_dotenv
+from config.settings import config as _config
+# load_dotenv()
 
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("openai").setLevel(logging.WARNING)
@@ -46,6 +46,8 @@ def check_ollama_status() -> bool:
     logger = logging.getLogger("core.llm_client")
     prev = logger.level
     logger.setLevel(logging.CRITICAL)
+    if _config.llm.provider.lower() not in ['ollama']:
+        return True
     try:
         from core.llm_client import LLMClient
         return LLMClient().health_check()
@@ -197,10 +199,10 @@ with st.sidebar:
 
     ollama_ok = check_ollama_status()
     if ollama_ok:
-        st.success("🟢 Ollama connected")
+        st.success(f"🟢 {_config.llm.provider.capitalize()} connected")
     else:
-        st.error("🔴 Ollama unreachable")
-        st.caption("Run: `ollama serve`")
+        st.error(f"🔴 {_config.llm.provider.capitalize()}  unreachable")
+        st.caption("For Local: Run -> `ollama serve` | For Prod: Check proxy/provider.")
 
     st.divider()
 
@@ -234,7 +236,7 @@ with st.sidebar:
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
-from config.settings import config as _config
+
 _backend_label = {
     "supabase": "Supabase",
     "qdrant":   "Qdrant",
@@ -244,7 +246,7 @@ _backend_label = {
 st.title("🔍 RAG Query")
 st.caption(
     f"{'🤖 Agentic' if agentic_mode else '⚡ Linear'} · "
-    f"Hybrid search · FlashRank · Mistral-7B · {_backend_label}"
+    f"Hybrid search · FlashRank · {_config.llm.model}· {_backend_label}"
 )
 
 pipeline_ready = False

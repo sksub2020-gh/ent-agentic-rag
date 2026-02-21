@@ -27,8 +27,8 @@ class LLMClient(LLMClientBase):
     def __init__(self):
         self.client = OpenAI(
             base_url=config.llm.base_url,
-            api_key=config.llm.api_key,
-            project=config.project_name,
+            api_key=config.llm.api_key.get_secret_value(),
+            # project=config.project_name,
         )
         self.model = config.llm.model
         logger.info(f"LLMClient ready → provider={config.llm.provider} model={self.model}")

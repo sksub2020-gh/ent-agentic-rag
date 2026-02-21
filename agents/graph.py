@@ -49,15 +49,10 @@ def _build_default_retriever() -> HybridRetriever:
     Build default retriever using SupabaseStore.
     Swap this for MilvusLiteStore + BM25SStore for local dev.
     """
-    from retrieval.supabase_store import SupabaseStore
-    embedder = MpetEmbedder()
-    store    = SupabaseStore()
-    return HybridRetriever(
-        vector_store=store,
-        sparse_store=store,
-        embedder=embedder,
-        reranker=FlashRankReranker(),
-    )
+    from retrieval.store_factory import build_retriever
+    retriever = build_retriever()
+    
+    return retriever
 
 
 def build_rag_graph(

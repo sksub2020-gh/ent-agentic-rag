@@ -122,11 +122,15 @@ class HybridRetriever:
         self.sparse_store = sparse_store
         self.embedder = embedder
         self.reranker = reranker or FlashRankReranker()
-        self._use_sql_hybrid = hasattr(vector_store, "hybrid_search")
+        self._use_sql_hybrid = config.store_backend.lower() == 'supabase' #hasattr(vector_store, "hybrid_search")
+        log_text = {"supabase": "SQL Hybrid Search (Supabase)",
+                    "milvus": "Python RRF Search (Milvus+BM25S)",
+                    "qdrant": "Python Hybrid Search (Qdrant)"}
         logger.info(
             f"HybridRetriever ready — "
-            f"{'SQL hybrid (Supabase)' if self._use_sql_hybrid else 'Python RRF (Milvus+BM25S)'}"
+            f"{log_text[config.store_backend.lower()]}"
         )
+        print("....")
 
     def retrieve(self, query: str, top_k: int | None = None) -> list[RetrievedChunk]:
         """

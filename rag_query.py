@@ -16,31 +16,13 @@ logger = logging.getLogger(__name__)
 def query(question: str) -> dict:
     from core.llm_client import LLMClient
     from ingestion.embedder import MpetEmbedder
-    from retrieval.hybrid_retriever import HybridRetriever, FlashRankReranker
     from agents.rag_node import RAG_SYSTEM_PROMPT, build_context_prompt
+    from retrieval.store_factory import build_retriever
 
     embedder  = MpetEmbedder()
     llm       = LLMClient()
 
-    if config.store_backend == "supabase":
-        from retrieval.supabase_store import SupabaseStore
-        store = SupabaseStore()
-        vector_store = sparse_store = store
-    elif config.store_backend == "milvus":
-        from retrieval.milvus_store import MilvusLiteStore
-        from retrieval.bm25_store import BM25SStore
-        vector_store = MilvusLiteStore(dimension=embedder.dimension)
-        sparse_store = BM25SStore()
-    else:
-        print(f"⚠️  Vector Backend {config.store_backend} is not implemented.")
-        sys.exit(1)
-    
-    retriever = HybridRetriever(
-        vector_store=vector_store,
-        sparse_store=sparse_store,
-        embedder=embedder,
-        reranker=FlashRankReranker(),
-    )
+    retriever = build_retriever(embedder=embedder)
 
     chunks = retriever.retrieve(question)
     if not chunks:
@@ -67,6 +49,17 @@ def query(question: str) -> dict:
 
 if __name__ == "__main__":
     from core.llm_client import LLMClient
+
+    import phoenix as px
+    from phoenix.otel import register
+    from openinference.instrumentation.langchain import LangChainInstrumentor
+
+    # 1. Initialize Phoenix and the OpenTelemetry bridge
+    px.launch_app()
+    register(project_name=config.project_name, auto_instrument=True)
+    # 2. Prevent the "Already instrumented" warning
+    if not LangChainInstrumentor().is_instrumented_by_opentelemetry:
+        LangChainInstrumentor().instrument()
 
     llm = LLMClient()
     if not llm.health_check():

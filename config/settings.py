@@ -9,7 +9,7 @@ Central config using pydantic-settings.
 Add to requirements.txt: pydantic-settings>=2.0.0
 """
 from pydantic_settings import BaseSettings
-from pydantic import Field
+from pydantic import Field, SecretStr
 
 
 class LLMConfig(BaseSettings):
@@ -24,7 +24,7 @@ class LLMConfig(BaseSettings):
     """
     provider:    str   = "ollama"
     base_url:    str   = "http://localhost:11434/v1"
-    api_key:     str   = "ollama"
+    api_key:     SecretStr   = "ollama"
     model:       str   = "mistral:7b"
     temperature: float = 0.1
     max_tokens:  int   = 1024
@@ -80,21 +80,68 @@ class SupabaseConfig(BaseSettings):
 
     model_config = {"env_prefix": "SUPABASE_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
+# class LangchainConfig(BaseSettings):
+#     tracing_v2: str = False
+#     api_key: SecretStr = ""
+#     project: str = "learn-agentic-rag"
+
+#     model_config = {"env_prefix": "LANGCHAIN_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+
+class QdrantConfig(BaseSettings):
+    """
+    Qdrant connection settings.
+
+    Local file (default — no server needed):
+        QDRANT_MODE=local
+        QDRANT_PATH=./data/index/qdrant
+
+    In-memory (testing):
+        QDRANT_MODE=memory
+
+    Remote / Qdrant Cloud:
+        QDRANT_MODE=remote
+        QDRANT_URL=http://localhost:6333
+        QDRANT_API_KEY=your-key   # only for Qdrant Cloud
+    """
+    mode:            str       = "local"            # local | memory | remote
+    path:            str       = "./data/index/qdrant"    # used when mode=local
+    url:             str       = "http://localhost:6333"  # used when mode=remote
+    api_key:         str       = ""                 # Qdrant Cloud only
+    collection_name: str       = "rag_chunks"
+    dimension:       int | None = None              # auto-resolved from embedder
+
+    model_config = {"env_prefix": "QDRANT_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 
 class AppConfig(BaseSettings):
+    # LLM 
     llm:       LLMConfig       = Field(default_factory=LLMConfig)
+
+    # Parse, Chunk and Embeddding
     embedding: EmbeddingConfig = Field(default_factory=EmbeddingConfig)
+    docling:   DoclingConfig   = Field(default_factory=DoclingConfig)
+
+    # Milvus + BM25s (local only)
     milvus:    MilvusConfig    = Field(default_factory=MilvusConfig)
     bm25:      BM25Config      = Field(default_factory=BM25Config)
-    retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
-    docling:   DoclingConfig   = Field(default_factory=DoclingConfig)
-    supabase:  SupabaseConfig  = Field(default_factory=SupabaseConfig)
-    project_name: str          = "learn-agentic-rag"
-    store_backend: str         = "supabase" # "supabase" | "milvus"
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    # qdrant + hybrid Search (local only)
+    qdrant:    QdrantConfig    = Field(default_factory=QdrantConfig)
+
+    # PgVector + hybrid Search (Supabase - cloud)
+    supabase:  SupabaseConfig  = Field(default_factory=SupabaseConfig)
+   
+   # retrival
+    retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
+    
+    project_name: str          = "learn-agentic-rag"
+    store_backend: str         = "supabase" # "supabase" | "milvus" | "qdrant"
+    langchain_tracing_v2: str = False
+    langchain_api_key: str = ''
+    langchain_project: str = project_name
+
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 # Singleton — imported everywhere as: from config.settings import config

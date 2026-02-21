@@ -41,6 +41,18 @@ def print_result(result: dict) -> None:
 def main():
     from agents.graph import build_rag_graph, run_query
     from core.llm_client import LLMClient
+    from config.settings import config
+
+    import phoenix as px
+    from phoenix.otel import register
+    from openinference.instrumentation.langchain import LangChainInstrumentor
+
+    # 1. Initialize Phoenix and the OpenTelemetry bridge
+    px.launch_app()
+    register(project_name=f"{config.project_name} - agentic-rag.py", auto_instrument=True)
+    # 2. Prevent the "Already instrumented" warning
+    if not LangChainInstrumentor().is_instrumented_by_opentelemetry:
+        LangChainInstrumentor().instrument()
 
     # Health check before building the graph
     llm = LLMClient()

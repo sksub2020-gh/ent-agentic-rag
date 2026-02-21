@@ -193,7 +193,7 @@ def render_agentic_meta(result: dict):
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
 with st.sidebar:
-    st.header("⚙️ Settings")
+    st.header(f"⚙️ Settings · {_config.app_env.upper()} ·")
 
     ollama_ok = check_ollama_status()
     if ollama_ok:

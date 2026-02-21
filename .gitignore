@@ -11,5 +11,6 @@ wheels/
 **data/**
 pgvector/**
 .DS_Store
-.env
+.env**
 db_test.py
+

@@ -17,7 +17,6 @@ Schema setup: run retrieval/supabase_migration.sql in Supabase SQL editor first.
 """
 import json
 import logging
-from typing import Any
 
 import psycopg2
 import psycopg2.extras

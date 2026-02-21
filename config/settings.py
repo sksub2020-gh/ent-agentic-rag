@@ -8,7 +8,9 @@ Central config using pydantic-settings.
 
 Add to requirements.txt: pydantic-settings>=2.0.0
 """
-from pydantic_settings import BaseSettings
+import os
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, SecretStr
 
 
@@ -29,7 +31,7 @@ class LLMConfig(BaseSettings):
     temperature: float = 0.1
     max_tokens:  int   = 1024
 
-    model_config = {"env_prefix": "LLM_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+    # model_config = {"env_prefix": "LLM_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 class EmbeddingConfig(BaseSettings):
@@ -37,7 +39,7 @@ class EmbeddingConfig(BaseSettings):
     dimension:  int | None = None
     device:     str       = "cpu"
 
-    model_config = {"env_prefix": "EMBEDDING_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+    # model_config = {"env_prefix": "EMBEDDING_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 class MilvusConfig(BaseSettings):
@@ -45,14 +47,14 @@ class MilvusConfig(BaseSettings):
     collection_name: str = "rag_docs"
     metric_type:     str = "COSINE"
 
-    model_config = {"env_prefix": "MILVUS_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+    # model_config = {"env_prefix": "MILVUS_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 class BM25Config(BaseSettings):
     index_path: str = "./data/index/bm25_index"
     method:     str = "lucene"
 
-    model_config = {"env_prefix": "BM25_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+    # model_config = {"env_prefix": "BM25_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 class RetrievalConfig(BaseSettings):
@@ -62,7 +64,7 @@ class RetrievalConfig(BaseSettings):
     rrf_k:          int   = 60
     reranker_model: str   = "ms-marco-MiniLM-L-12-v2"
 
-    model_config = {"env_prefix": "RETRIEVAL_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+    # model_config = {"env_prefix": "RETRIEVAL_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 class DoclingConfig(BaseSettings):
@@ -71,14 +73,14 @@ class DoclingConfig(BaseSettings):
     overlap_tokens:    int  = 32
     supported_formats: list = Field(default=["pdf", "html", "docx"])
 
-    model_config = {"env_prefix": "DOCLING_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+    # model_config = {"env_prefix": "DOCLING_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 class SupabaseConfig(BaseSettings):
     connection_string: SecretStr = ""
     table_name:        str = "rag_chunks"
 
-    model_config = {"env_prefix": "SUPABASE_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+    # model_config = {"env_prefix": "SUPABASE_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 class QdrantConfig(BaseSettings):
     """
@@ -103,11 +105,14 @@ class QdrantConfig(BaseSettings):
     collection_name: str       = "rag_chunks"
     dimension:       int | None = None              # auto-resolved from embedder
 
-    model_config = {"env_prefix": "QDRANT_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+    # model_config = {"env_prefix": "QDRANT_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
-
+# Determine environment: .env.dev, .env.tst, or .env.prd
+app_env = os.getenv("APP_ENV", "dev").lower()
+env_file_path = f".env.{app_env}"
 
 class AppConfig(BaseSettings):
+    app_env:   str             = app_env
     # LLM 
     llm:       LLMConfig       = Field(default_factory=LLMConfig)
 
@@ -134,7 +139,15 @@ class AppConfig(BaseSettings):
     langchain_api_key: str = ''
     langchain_project: str = project_name
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+    # Environment variable loading
+    model_config = SettingsConfigDict(
+        env_file=env_file_path, 
+        env_file_encoding='utf-8',
+        env_nested_delimiter="__",
+        extra='ignore'
+    )
+
+    # model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 # Singleton — imported everywhere as: from config.settings import config

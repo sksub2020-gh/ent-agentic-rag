@@ -46,8 +46,6 @@ def check_ollama_status() -> bool:
     logger = logging.getLogger("core.llm_client")
     prev = logger.level
     logger.setLevel(logging.CRITICAL)
-    if _config.llm.provider.lower() not in ['ollama']:
-        return True
     try:
         from core.llm_client import LLMClient
         return LLMClient().health_check()

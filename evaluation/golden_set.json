@@ -1,0 +1,426 @@
+[
+  {
+    "question": "What is the software license of the Docling package?",
+    "ground_truth": "MIT license",
+    "contexts": [
+      "Docling, an easy to use, self-contained, MIT-licensed open-source package for PDF document conversion."
+    ],
+    "answer": "",
+    "metadata": {
+      "id": 1,
+      "question_type": "Factual",
+      "difficulty": "Easy",
+      "expected_behavior": "Answer from context"
+    }
+  },
+  {
+    "question": "Which AI model does Docling use for layout analysis?",
+    "ground_truth": "DocLayNet",
+    "contexts": [
+      "It is powered by state-of-the-art specialized AI models for layout analysis (DocLayNet) and table structure recognition (TableFormer)."
+    ],
+    "answer": "",
+    "metadata": {
+      "id": 2,
+      "question_type": "Factual",
+      "difficulty": "Easy",
+      "expected_behavior": "Answer from context"
+    }
+  },
+  {
+    "question": "Which AI model does Docling use for table structure recognition?",
+    "ground_truth": "TableFormer",
+    "contexts": [
+      "It is powered by state-of-the-art specialized AI models for layout analysis (DocLayNet) and table structure recognition (TableFormer)."
+    ],
+    "answer": "",
+    "metadata": {
+      "id": 3,
+      "question_type": "Factual",
+      "difficulty": "Easy",
+      "expected_behavior": "Answer from context"
+    }
+  },
+  {
+    "question": "What output formats does Docling support for document serialization?",
+    "ground_truth": "JSON and Markdown",
+    "contexts": [
+      "The final output can then be serialized to JSON or transformed into a Markdown representation at the users request."
+    ],
+    "answer": "",
+    "metadata": {
+      "id": 4,
+      "question_type": "Factual",
+      "difficulty": "Easy",
+      "expected_behavior": "Answer from context"
+    }
+  },
+  {
+    "question": "What OCR library does Docling use in its initial release?",
+    "ground_truth": "EasyOCR",
+    "contexts": [
+      "In our initial release, we rely on EasyOCR, a popular third-party OCR library with support for many languages."
+    ],
+    "answer": "",
+    "metadata": {
+      "id": 5,
+      "question_type": "Factual",
+      "difficulty": "Easy",
+      "expected_behavior": "Answer from context"
+    }
+  },
+  {
+    "question": "Where can Docling be installed from?",
+    "ground_truth": "PyPI (Python Package Index)",
+    "contexts": [
+      "To use Docling, you can simply install the docling package from PyPI."
+    ],
+    "answer": "",
+    "metadata": {
+      "id": 6,
+      "question_type": "Factual",
+      "difficulty": "Easy",
+      "expected_behavior": "Answer from context"
+    }
+  },
+  {
+    "question": "What resolution does Docling use when feeding page images to the layout analysis model?",
+    "ground_truth": "72 dpi",
+    "contexts": [
+      "The Docling pipeline feeds page images at 72 dpi resolution, which can be processed on a single CPU with sub-second latency."
+    ],
+    "answer": "",
+    "metadata": {
+      "id": 7,
+      "question_type": "Factual",
+      "difficulty": "Medium",
+      "expected_behavior": "Answer from context"
+    }
+  },
+  {
+    "question": "What architecture is the Docling layout analysis model derived from, and on which dataset was it re-trained?",
+    "ground_truth": "The layout analysis model is derived from RT-DETR architecture and was re-trained on the DocLayNet dataset.",
+    "contexts": [
+      "Its architecture is derived from RT-DETR and re-trained on DocLayNet, our popular human-annotated dataset for document-layout analysis. For inference, our implementation relies on the onnxruntime."
+    ],
+    "answer": "",
+    "metadata": {
+      "id": 8,
+      "question_type": "Multi-hop",
+      "difficulty": "Medium",
+      "expected_behavior": "Answer from context"
+    }
+  },
+  {
+    "question": "What package provides inference code for Docling AI models, and where are the pre-trained weights hosted?",
+    "ground_truth": "The inference code is in the docling-ibm-models package; pre-trained weights are hosted on HuggingFace.",
+    "contexts": [
+      "We provide the pre-trained weights (hosted on huggingface) and a separate package for the inference code as docling-ibm-models."
+    ],
+    "answer": "",
+    "metadata": {
+      "id": 9,
+      "question_type": "Multi-hop",
+      "difficulty": "Medium",
+      "expected_behavior": "Answer from context"
+    }
+  },
+  {
+    "question": "What is Docling companion package for RAG, and which LLM framework does it integrate with?",
+    "ground_truth": "The companion package is quackling; it integrates seamlessly with LlamaIndex.",
+    "contexts": [
+      "We provide quackling, an open-source package which capitalizes on Doclings feature-rich document output to enable document-native optimized vector embedding and chunking. It plugs in seamlessly with LLM frameworks such as LlamaIndex."
+    ],
+    "answer": "",
+    "metadata": {
+      "id": 10,
+      "question_type": "Multi-hop",
+      "difficulty": "Hard",
+      "expected_behavior": "Answer from context"
+    }
+  },
+  {
+    "question": "What is the default PDF backend in Docling based on, and what is its package name?",
+    "ground_truth": "The default PDF backend is based on the low-level qpdf library and is packaged as docling-parse.",
+    "contexts": [
+      "We open-source a custom-built PDF parser, which is based on the low-level qpdf library. It is made available in a separate package named docling-parse and powers the default PDF backend in Docling."
+    ],
+    "answer": "",
+    "metadata": {
+      "id": 11,
+      "question_type": "Multi-hop",
+      "difficulty": "Medium",
+      "expected_behavior": "Answer from context"
+    }
+  },
+  {
+    "question": "How does Doclings post-processing stage connect to both the AI model pipeline output and the final serialization step?",
+    "ground_truth": "The post-processing stage receives aggregated per-page predictions from the AI model pipeline, augments them with metadata such as language, reading order, figure-caption matching, and author/title labels, then produces a typed document object that is serialized to JSON or Markdown.",
+    "contexts": [
+      "The results from all pages are aggregated and passed through a post-processing stage, which augments metadata, detects the document language, infers reading-order and eventually assembles a typed document object which can be serialized to JSON or Markdown."
+    ],
+    "answer": "",
+    "metadata": {
+      "id": 12,
+      "question_type": "Multi-hop",
+      "difficulty": "Hard",
+      "expected_behavior": "Answer from context"
+    }
+  },
+  {
+    "question": "On the Apple M3 Max with 4 CPU threads and the native backend, what was the throughput in pages per second?",
+    "ground_truth": "1.27 pages per second",
+    "contexts": [
+      "Table 1: Apple M3 Max (16 cores), 4 threads, native backend: TTS=177s, Pages/s=1.27, Mem=6.20 GB."
+    ],
+    "answer": "",
+    "metadata": {
+      "id": 13,
+      "question_type": "Numerical/Table",
+      "difficulty": "Medium",
+      "expected_behavior": "Answer from context"
+    }
+  },
+  {
+    "question": "How much memory does the pypdfium backend use versus the native backend on the Apple M3 Max with 4 threads?",
+    "ground_truth": "pypdfium uses 2.56 GB vs 6.20 GB for the native backend — less than half the memory.",
+    "contexts": [
+      "Table 1: native backend Mem=6.20 GB; pypdfium backend Mem=2.56 GB on Apple M3 Max with 4 threads."
+    ],
+    "answer": "",
+    "metadata": {
+      "id": 14,
+      "question_type": "Numerical/Table",
+      "difficulty": "Medium",
+      "expected_behavior": "Answer from context"
+    }
+  },
+  {
+    "question": "What is the total number of manually annotated pages in the DocLayNet dataset?",
+    "ground_truth": "80,863 manually annotated pages",
+    "contexts": [
+      "It contains 80863 manually annotated pages from diverse data sources to represent a wide variability in layouts."
+    ],
+    "answer": "",
+    "metadata": {
+      "id": 15,
+      "question_type": "Numerical/Table",
+      "difficulty": "Easy",
+      "expected_behavior": "Answer from context"
+    }
+  },
+  {
+    "question": "What mAP@0.5-0.95 score did YOLOv5x6 achieve on the Text class in the DocLayNet benchmark?",
+    "ground_truth": "88.1 mAP@0.5-0.95",
+    "contexts": [
+      "Table 2: YOLO v5x6, Text = 88.1 mAP@0.5-0.95."
+    ],
+    "answer": "",
+    "metadata": {
+      "id": 16,
+      "question_type": "Numerical/Table",
+      "difficulty": "Hard",
+      "expected_behavior": "Answer from context"
+    }
+  },
+  {
+    "question": "How long does it typically take TableFormer to process a single table on a standard CPU?",
+    "ground_truth": "Between 2 and 6 seconds, depending on the number of table cells.",
+    "contexts": [
+      "Typical tables require between 2 and 6 seconds to be processed on a standard CPU, strongly depending on the amount of included table cells."
+    ],
+    "answer": "",
+    "metadata": {
+      "id": 17,
+      "question_type": "Numerical/Table",
+      "difficulty": "Easy",
+      "expected_behavior": "Answer from context"
+    }
+  },
+  {
+    "question": "Why does Docling use a linear sequential pipeline rather than a parallel architecture?",
+    "ground_truth": "Each stage depends on the output of the previous one: the AI models need parsed text tokens and rendered page images from the PDF backend, and the assembly stage needs all per-page predictions before constructing the final document object. A parallel design would break these dependencies.",
+    "contexts": [
+      "Docling implements a linear pipeline of operations, which execute sequentially on each given document. Each document is first parsed by a PDF backend... Then, the standard model pipeline applies a sequence of AI models independently on every page... Finally, the results from all pages are aggregated and passed through a post-processing stage."
+    ],
+    "answer": "",
+    "metadata": {
+      "id": 18,
+      "question_type": "Conceptual",
+      "difficulty": "Hard",
+      "expected_behavior": "Answer from context"
+    }
+  },
+  {
+    "question": "What trade-off does the pypdfium backend introduce compared to the default docling-parse backend?",
+    "ground_truth": "The pypdfium backend is faster and uses less memory but produces worse quality results, especially for table structure recovery.",
+    "contexts": [
+      "While it is faster and more memory efficient than the default docling-parse backend, it will come at the expense of worse quality results, especially in table structure recovery."
+    ],
+    "answer": "",
+    "metadata": {
+      "id": 19,
+      "question_type": "Conceptual",
+      "difficulty": "Medium",
+      "expected_behavior": "Answer from context"
+    }
+  },
+  {
+    "question": "How does Doclings extensibility model allow developers to customize the AI model pipeline?",
+    "ground_truth": "Developers sub-class BaseModelPipeline or clone the default pipeline, implement model classes using Pythons Callable interface with a __call__ method accepting and returning page-object iterators, and pass the custom class to the document conversion methods.",
+    "contexts": [
+      "A model pipeline can be fully customized by sub-classing from an abstract base-class (BaseModelPipeline) or cloning the default model pipeline. Implementations of model classes must satisfy the python Callable interface. The __call__ method must accept an iterator over page objects, and produce another iterator over the page objects augmented with additional features."
+    ],
+    "answer": "",
+    "metadata": {
+      "id": 20,
+      "question_type": "Conceptual",
+      "difficulty": "Hard",
+      "expected_behavior": "Answer from context"
+    }
+  },
+  {
+    "question": "What is the purpose of the post-processing stage in Doclings pipeline?",
+    "ground_truth": "It augments metadata, detects the document language, corrects reading order, matches figures with captions, and labels title, authors and references before final serialization.",
+    "contexts": [
+      "The generated document object is passed through a post-processing model which leverages several algorithms to augment features, such as detection of the document language, correcting the reading order, matching figures with captions and labelling metadata such as title, authors and references."
+    ],
+    "answer": "",
+    "metadata": {
+      "id": 21,
+      "question_type": "Conceptual",
+      "difficulty": "Medium",
+      "expected_behavior": "Answer from context"
+    }
+  },
+  {
+    "question": "What is the pricing model for using Docling via a commercial cloud API?",
+    "ground_truth": "NOT_IN_CONTEXT",
+    "contexts": [
+      "Docling implements a linear pipeline of operations, which execute sequentially on each given document. Each document is first parsed by a PDF backend, which retrieves the programmatic text tokens."
+    ],
+    "answer": "",
+    "metadata": {
+      "id": 22,
+      "question_type": "Negative",
+      "difficulty": "Hard",
+      "expected_behavior": "Docling is an open-source MIT-licensed tool; the document contains no information about commercial cloud API pricing."
+    }
+  },
+  {
+    "question": "How many GPU hours were required to train the TableFormer model?",
+    "ground_truth": "NOT_IN_CONTEXT",
+    "contexts": [
+      "The TableFormer model, first published in 2022 and since refined with a custom structure token language, is a vision-transformer model for table structure recovery."
+    ],
+    "answer": "",
+    "metadata": {
+      "id": 23,
+      "question_type": "Negative",
+      "difficulty": "Medium",
+      "expected_behavior": "The document does not mention GPU training hours for TableFormer."
+    }
+  },
+  {
+    "question": "What is the exact version of Python required to run Docling?",
+    "ground_truth": "NOT_IN_CONTEXT",
+    "contexts": [
+      "To use Docling, you can simply install the docling package from PyPI. Documentation and examples are available in our GitHub repository at github.com/DS4SD/docling."
+    ],
+    "answer": "",
+    "metadata": {
+      "id": 24,
+      "question_type": "Negative",
+      "difficulty": "Medium",
+      "expected_behavior": "The document does not specify a required Python version."
+    }
+  },
+  {
+    "question": "Does Docling support real-time streaming of partially converted document pages?",
+    "ground_truth": "NOT_IN_CONTEXT",
+    "contexts": [
+      "Docling can be configured to be optimal for batch-mode (high throughput, low time-to-solution) or interactive mode (compromise on efficiency, low time-to-solution)."
+    ],
+    "answer": "",
+    "metadata": {
+      "id": 25,
+      "question_type": "Negative",
+      "difficulty": "Hard",
+      "expected_behavior": "The document describes batch and interactive modes but does not mention real-time streaming of partial results."
+    }
+  },
+  {
+    "question": "What is the GitHub star count for the Docling repository?",
+    "ground_truth": "NOT_IN_CONTEXT",
+    "contexts": [
+      "Documentation and examples are available in our GitHub repository at github.com/DS4SD/docling. All required model assets are downloaded to a local huggingface datasets cache on first use."
+    ],
+    "answer": "",
+    "metadata": {
+      "id": 26,
+      "question_type": "Negative",
+      "difficulty": "Easy",
+      "expected_behavior": "The document does not mention the GitHub star count."
+    }
+  },
+  {
+    "question": "What is the boiling point of water at sea level?",
+    "ground_truth": "NOT_APPLICABLE",
+    "contexts": [],
+    "answer": "",
+    "metadata": {
+      "id": 27,
+      "question_type": "Irrelevant",
+      "difficulty": "Easy",
+      "expected_behavior": "100 degrees Celsius / 212 degrees Fahrenheit. This question is entirely unrelated to Docling or document processing."
+    }
+  },
+  {
+    "question": "Who won the FIFA World Cup in 2022?",
+    "ground_truth": "NOT_APPLICABLE",
+    "contexts": [],
+    "answer": "",
+    "metadata": {
+      "id": 28,
+      "question_type": "Irrelevant",
+      "difficulty": "Easy",
+      "expected_behavior": "Argentina won the 2022 FIFA World Cup. This question is entirely unrelated to the document."
+    }
+  },
+  {
+    "question": "How does the transformer attention mechanism work in large language models?",
+    "ground_truth": "NOT_APPLICABLE",
+    "contexts": [],
+    "answer": "",
+    "metadata": {
+      "id": 29,
+      "question_type": "Irrelevant",
+      "difficulty": "Medium",
+      "expected_behavior": "General LLM question unrelated to Docling. The document only briefly references LLMs as a motivation for RAG use cases."
+    }
+  },
+  {
+    "question": "What are the best practices for writing a Python REST API with FastAPI?",
+    "ground_truth": "NOT_APPLICABLE",
+    "contexts": [],
+    "answer": "",
+    "metadata": {
+      "id": 30,
+      "question_type": "Irrelevant",
+      "difficulty": "Easy",
+      "expected_behavior": "FastAPI is not mentioned anywhere in the Docling technical report."
+    }
+  },
+  {
+    "question": "What is the recommended daily intake of vitamin C for adults?",
+    "ground_truth": "NOT_APPLICABLE",
+    "contexts": [],
+    "answer": "",
+    "metadata": {
+      "id": 31,
+      "question_type": "Irrelevant",
+      "difficulty": "Medium",
+      "expected_behavior": "Entirely unrelated to Docling or document processing."
+    }
+  }
+]

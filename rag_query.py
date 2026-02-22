@@ -6,6 +6,15 @@ import logging
 import sys
 from config.settings import config
 
+from core.llm_client import LLMClient
+from ingestion.embedder import MpetEmbedder
+from agents.rag_node import RAG_SYSTEM_PROMPT, build_context_prompt
+from retrieval.store_factory import build_retriever
+
+embedder  = MpetEmbedder()
+llm       = LLMClient()
+retriever = build_retriever(embedder=embedder)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -14,16 +23,6 @@ logger = logging.getLogger(__name__)
 
 
 def query(question: str) -> dict:
-    from core.llm_client import LLMClient
-    from ingestion.embedder import MpetEmbedder
-    from agents.rag_node import RAG_SYSTEM_PROMPT, build_context_prompt
-    from retrieval.store_factory import build_retriever
-
-    embedder  = MpetEmbedder()
-    llm       = LLMClient()
-
-    retriever = build_retriever(embedder=embedder)
-
     chunks = retriever.retrieve(question)
     if not chunks:
         return {"answer": "No relevant context found.", "chunks": [], "query": question}

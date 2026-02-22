@@ -9,10 +9,21 @@ Central config using pydantic-settings.
 Add to requirements.txt: pydantic-settings>=2.0.0
 """
 import os
+from pathlib import Path
+from typing import Annotated
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field, SecretStr
+from pydantic import AfterValidator, Field, SecretStr
 
+# Project root
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+# 1. Define the reusable logic
+def resolve_abs_path(v: Path) -> Path:
+    return v if v.is_absolute() else PROJECT_ROOT / v
+
+# 2. Create a reusable type alias
+AbsPath = Annotated[Path, AfterValidator(resolve_abs_path)]
 
 class LLMConfig(BaseSettings):
     """
@@ -43,7 +54,7 @@ class EmbeddingConfig(BaseSettings):
 
 
 class MilvusConfig(BaseSettings):
-    uri:             str = "./data/index/milvus_lite.db"
+    uri:             AbsPath = "data/index/milvus_lite.db"
     collection_name: str = "rag_docs"
     metric_type:     str = "COSINE"
 
@@ -51,7 +62,7 @@ class MilvusConfig(BaseSettings):
 
 
 class BM25Config(BaseSettings):
-    index_path: str = "./data/index/bm25_index"
+    index_path: AbsPath = "data/index/bm25_index"
     method:     str = "lucene"
 
     # model_config = {"env_prefix": "BM25_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
@@ -72,6 +83,8 @@ class DoclingConfig(BaseSettings):
     min_tokens:        int  = 64
     overlap_tokens:    int  = 32
     supported_formats: list = Field(default=["pdf", "html", "docx"])
+    ocr:               bool = False   # set DOCLING_OCR=true to enable EasyOCR
+
 
     # model_config = {"env_prefix": "DOCLING_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
@@ -88,7 +101,7 @@ class QdrantConfig(BaseSettings):
 
     Local file (default — no server needed):
         QDRANT_MODE=local
-        QDRANT_PATH=./data/index/qdrant
+        QDRANT_PATH=data/index/qdrant
 
     In-memory (testing):
         QDRANT_MODE=memory
@@ -99,13 +112,13 @@ class QdrantConfig(BaseSettings):
         QDRANT_API_KEY=your-key   # only for Qdrant Cloud
     """
     mode:            str       = "local"            # local | memory | remote
-    path:            str       = "./data/index/qdrant"    # used when mode=local
+    path:            AbsPath   = "data/index/qdrant"    # used when mode=local
     url:             str       = "http://localhost:6333"  # used when mode=remote
     api_key:         SecretStr = ""                 # Qdrant Cloud only
     collection_name: str       = "rag_chunks"
     dimension:       int | None = None              # auto-resolved from embedder
 
-    # model_config = {"env_prefix": "QDRANT_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+    model_config = {"env_prefix": "QDRANT_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 # Determine environment: .env.dev, .env.tst, or .env.prd
 app_env = os.getenv("APP_ENV", "dev").lower()

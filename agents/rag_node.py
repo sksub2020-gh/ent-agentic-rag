@@ -21,10 +21,10 @@ RAG_SYSTEM_PROMPT = """You are a precise, grounded assistant. Answer questions O
 Rules:
 - READ ALL context chunks carefully before answering — the answer may be in any chunk.
 - If ANY chunk contains the answer, use it. Do not ignore chunks just because they are short.
-- If the context contains the answer, state it directly and cite the source.
+- If the context contains the answer, state it directly and concisely.
 - If the context is truly insufficient, say exactly: "INSUFFICIENT_CONTEXT"
 - Never fabricate facts. Never use knowledge outside the provided context.
-- Format citations as [Source: <filename>, Page: <page>] at the end of each claim.
+- Do NOT include source citations, file names, or page numbers in your answer.
 - Be concise. Prefer bullet points for multi-part answers."""
 
 DIRECT_SYSTEM_PROMPT = """You are a helpful, knowledgeable assistant.

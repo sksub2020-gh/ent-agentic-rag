@@ -24,16 +24,33 @@ class DoclingHybridChunker(ChunkerBase):
     It respects headings, tables, lists — doesn't blindly split mid-sentence.
     """
 
-    def __init__(self, tokenizer):
-        self.converter = DocumentConverter()
-        # Tokenizer keeps chunk sizes meaningful for your embedding model
+    def __init__(self, tokenizer, ocr: bool = False):
+        """
+        Args:
+            ocr: Enable EasyOCR for scanned/image-based PDFs.
+                 Needed to extract text from image tables and appendices.
+                 Slower — only enable when re-ingesting docs with image content.
+                 Set via DOCLING_OCR=true in .env or pass ocr=True directly.
+        """
+        from docling.datamodel.pipeline_options import PdfPipelineOptions
+        from docling.document_converter import PdfFormatOption
+
+        ocr_enabled = ocr or config.docling.ocr
+        pipeline_options = PdfPipelineOptions(do_ocr=ocr_enabled)
+
+        self.converter = DocumentConverter(
+            format_options={
+                "pdf": PdfFormatOption(pipeline_options=pipeline_options)
+            }
+        )
+
         self.chunker = HybridChunker(
             tokenizer=tokenizer,
             max_tokens=config.docling.max_tokens,
             min_tokens=config.docling.min_tokens,
             overlap_tokens=config.docling.overlap_tokens,
         )
-        logger.info("DoclingHybridChunker ready")
+        logger.info(f"DoclingHybridChunker ready — OCR: {'enabled' if ocr_enabled else 'disabled'}")
 
     def chunk(self, document: Document) -> list[Chunk]:
         """
@@ -61,14 +78,20 @@ class DoclingHybridChunker(ChunkerBase):
                 "doc_type": document.doc_type,
                 "chunk_index": i,
                 "total_chunks": len(raw_chunks),
+                "page": "1",    # default to page 1 — overridden below if available
             }
 
             # Docling exposes page numbers and section headings where available
             if hasattr(raw_chunk, "meta") and raw_chunk.meta:
                 if hasattr(raw_chunk.meta, "headings") and raw_chunk.meta.headings:
                     metadata["section"] = raw_chunk.meta.headings[-1]  # nearest heading
-                if hasattr(raw_chunk.meta, "page_no"):
-                    metadata["page"] = raw_chunk.meta.page_no
+                # page_no can be an int or a PageItem — handle both
+                if hasattr(raw_chunk.meta, "page_no") and raw_chunk.meta.page_no is not None:
+                    metadata["page"] = str(raw_chunk.meta.page_no)
+                elif hasattr(raw_chunk.meta, "origin") and raw_chunk.meta.origin:
+                    origin = raw_chunk.meta.origin
+                    if hasattr(origin, "page_no") and origin.page_no is not None:
+                        metadata["page"] = str(origin.page_no)
 
             chunks.append(Chunk(
                 chunk_id=chunk_id,

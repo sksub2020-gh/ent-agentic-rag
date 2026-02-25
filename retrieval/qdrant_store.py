@@ -50,12 +50,12 @@ class QdrantStore(VectorStoreBase, SparseStoreBase):
             logger.info("QdrantStore → in-memory")
         elif mode == "local":
             import os
-            if os.path.isabs(config.qdrant.path):
-                resolved_path = config.qdrant.path
+            if os.path.isabs(config.qdrant.db_path):
+                resolved_path = config.qdrant.db_path
             else:
                 # Anchor to project root (two levels up from retrieval/qdrant_store.py)
                 project_root = Path(__file__).resolve().parent.parent
-                resolved_path = str(project_root / config.qdrant.path)
+                resolved_path = str(project_root / config.qdrant.db_path)
             os.makedirs(resolved_path, exist_ok=True)
             self.client = QdrantClient(path=resolved_path)
             logger.info(f"QdrantStore → local: {resolved_path}")

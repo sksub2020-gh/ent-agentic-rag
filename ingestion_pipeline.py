@@ -1,121 +1,159 @@
 """
-Main ingestion pipeline — ties Docling + mpeT + Milvus + BM25S together.
-Run this to ingest documents before querying.
+Ingestion pipeline — config-driven backend via store_factory.
+Supports Supabase, Qdrant, and Milvus+BM25S via STORE_BACKEND in .env
+
+Usage:
+    python cli/ingestion_pipeline.py ./data/raw/docling.pdf   # ingest file
+    python cli/ingestion_pipeline.py ./data/raw/              # ingest directory
+    python cli/ingestion_pipeline.py inspect                  # show store stats
 """
+import sys
 import logging
 from pathlib import Path
+from dotenv import load_dotenv
 
-from ingestion.docling_chunker import DoclingHybridChunker
-from ingestion.embedder import MpetEmbedder
-from retrieval.milvus_store import MilvusLiteStore
-from retrieval.bm25_store import BM25SStore
-from core.interfaces import Chunk
+load_dotenv()
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+)
 logger = logging.getLogger(__name__)
 
-
-class IngestionPipeline:
-    """
-    Orchestrates the full ingestion flow:
-    Document → Docling chunks → mpeT embeddings → Milvus (dense) + BM25S (sparse)
-    """
-
-    def __init__(self):
-        logger.info("Initializing ingestion pipeline...")
-        self.embedder = MpetEmbedder()
-        self.chunker = DoclingHybridChunker(self.embedder.tokenizer)
-        self.vector_store = MilvusLiteStore(self.embedder.dimension)
-        self.sparse_store = BM25SStore()
-
-    def ingest_file(self, file_path: str) -> list[Chunk]:
-        """Ingest a single file (PDF, HTML, DOCX)."""
-        logger.info(f"Ingesting: {file_path}")
-
-        # 1. Chunk
-        chunks = self.chunker.chunk_from_file(file_path)
-        if not chunks:
-            logger.warning(f"No chunks produced from {file_path}")
-            return []
-
-        # 2. Embed (batch for efficiency)
-        texts = [c.content for c in chunks]
-        embeddings = self.embedder.embed(texts)
-        for chunk, emb in zip(chunks, embeddings):
-            chunk.embedding = emb
-
-        # 3. Store dense (Milvus)
-        self.vector_store.upsert(chunks)
-
-        # 4. Store sparse (BM25S) — rebuilds index including new chunks
-        # For production at scale, collect all chunks then call index() once
-        all_chunks = self._get_all_chunks_for_bm25(chunks)
-        self.sparse_store.index(all_chunks)
-
-        logger.info(f"✓ Ingested {len(chunks)} chunks from {Path(file_path).name}")
-        return chunks
-
-    def ingest_directory(self, dir_path: str, extensions: list[str] | None = None) -> int:
-        """Ingest all supported files from a directory."""
-        extensions = extensions or [".pdf", ".html", ".htm"]
-        dir_path = Path(dir_path)
-        files = [f for f in dir_path.rglob("*") if f.suffix.lower() in extensions]
-
-        logger.info(f"Found {len(files)} files in {dir_path}")
-
-        all_chunks = []
-        for file in files:
-            try:
-                chunks = self.ingest_file(str(file))
-                all_chunks.extend(chunks)
-            except Exception as e:
-                logger.error(f"Failed to ingest {file}: {e}")
-
-        # Rebuild BM25 once for all docs (more efficient than per-file rebuild)
-        if all_chunks:
-            self.sparse_store.index(all_chunks)
-
-        total = self.vector_store.count()
-        logger.info(f"Ingestion complete — total chunks in store: {total}")
-        return total
-
-    def _get_all_chunks_for_bm25(self, new_chunks: list[Chunk]) -> list[Chunk]:
-        """
-        BM25S needs all chunks to rebuild index.
-        In Phase 1, we combine new + existing from the BM25 store's loaded corpus.
-        Production note: For large-scale incremental ingestion, switch to Elasticsearch.
-        """
-        existing = self.sparse_store._corpus_chunks or []
-        existing_ids = {c.chunk_id for c in existing}
-        combined = list(existing)
-        for chunk in new_chunks:
-            if chunk.chunk_id not in existing_ids:
-                combined.append(chunk)
-        return combined
+SUPPORTED_EXTENSIONS = {".pdf", ".html", ".htm", ".docx"}
+DIVIDER = "=" * 55
+SUBDIV  = "-" * 55
 
 
-# ---------------------------------------------------------------------------
-# Quick test / demo usage
-# ---------------------------------------------------------------------------
+def ingest(path: str) -> None:
+    from ingestion.docling_chunker import DoclingHybridChunker
+    from ingestion.embedder import MpetEmbedder
+    from retrieval.store_factory import build_stores
+
+    embedder = MpetEmbedder()
+    chunker  = DoclingHybridChunker(embedder.tokenizer)
+    
+    vector_store, sparse_store = build_stores(embedder)
+
+    # Collect files
+    p = Path(path)
+    files = (
+        [f for f in p.rglob("*") if f.suffix.lower() in SUPPORTED_EXTENSIONS]
+        if p.is_dir() else [p]
+    )
+
+    if not files:
+        logger.warning(f"No supported files found at: {path}")
+        return
+
+    logger.info(f"Ingesting {len(files)} file(s)...")
+
+    all_chunks = []
+    for file in files:
+        logger.info(f"Processing: {file.name}")
+        try:
+            chunks = chunker.chunk_from_file(str(file))
+            if not chunks:
+                logger.warning(f"No chunks from {file.name}")
+                continue
+
+            # Embed
+            embeddings = embedder.embed([c.content for c in chunks])
+            for chunk, emb in zip(chunks, embeddings):
+                chunk.embedding = emb
+
+            # Store dense
+            vector_store.upsert(chunks)
+            all_chunks.extend(chunks)
+            logger.info(f"  ✓ {len(chunks)} chunks from {file.name}")
+
+        except Exception as e:
+            logger.error(f"  ✗ Failed {file.name}: {e}")
+
+    # Sparse index — called once after all files for stores that need full corpus
+    # (BM25S needs full rebuild; Supabase/Qdrant handle it during upsert — no-op)
+    if all_chunks:
+        sparse_store.index(all_chunks)
+
+    logger.info(f"Ingestion complete — {len(all_chunks)} chunks indexed")
+    logger.info(f"Total in store: {vector_store.count()}")
+
+    # Explicitly close store — flushes Qdrant local SQLite to disk
+    if hasattr(vector_store, "close"):
+        vector_store.close()
+        logger.info("Store closed and flushed to disk")
+
+
+def inspect() -> None:
+    """Print vector store stats — collection info, point count, sample chunks."""
+    from ingestion.embedder import MpetEmbedder
+    from retrieval.store_factory import build_stores
+    from config.settings import config
+
+    embedder = MpetEmbedder()
+    vector_store, _ = build_stores(embedder)
+
+    print("")
+    print(DIVIDER)
+    print("  Vector Store Inspection")
+    print(SUBDIV)
+    print(f"  Backend:    {config.store_backend}")
+    print(f"  Model:      {config.embedding.model_name}")
+
+    total = vector_store.count()
+    print(f"  Points:     {total}")
+
+    # Qdrant-specific collection info
+    if hasattr(vector_store, "client"):
+        try:
+            info   = vector_store.client.get_collection(vector_store.collection)
+            dim    = info.config.params.vectors.get("dense").size
+            status = info.status
+            print(f"  Dimension:  {dim}")
+            print(f"  Collection: {vector_store.collection}")
+            print(f"  Status:     {status}")
+        except Exception as e:
+            print(f"  Collection info error: {e}")
+
+    # Sample 3 chunks — verify payload and vectors are populated
+    print(SUBDIV)
+    print("  Sample chunks (first 3):")
+    try:
+        if hasattr(vector_store, "client"):
+            points, _ = vector_store.client.scroll(
+                collection_name=vector_store.collection,
+                limit=3,
+                with_payload=True,
+                with_vectors=True,
+            )
+            for i, p in enumerate(points, 1):
+                content_val  = str(p.payload.get("content", "EMPTY"))[:60] if p.payload else "EMPTY"
+                vec          = p.vector or {}
+                dense_len    = len(vec.get("dense", []))
+                sparse_obj   = vec.get("sparse", {})
+                sparse_len   = len(sparse_obj.get("values", [])) if isinstance(sparse_obj, dict) else 0
+                page         = p.payload.get("page", "?") if p.payload else "?"
+                section      = str(p.payload.get("section", ""))[:30] if p.payload else ""
+                print(f"\n  [{i}] page={page} | {section}")
+                print(f"       content: '{content_val}...'")
+                print(f"       dense={dense_len}d  sparse_nnz={sparse_len}")
+        else:
+            print("  (detailed inspection only available for Qdrant backend)")
+    except Exception as e:
+        print(f"  Sample read error: {e}")
+
+    if hasattr(vector_store, "close"):
+        vector_store.close()
+
+    print(DIVIDER)
+    print("")
+
 
 if __name__ == "__main__":
-    import sys
-
-    # if len(sys.argv) < 2:
-    #     print("Usage: python ingestion_pipeline.py <path_to_file_or_dir>")
-    #     print("Example: python ingestion_pipeline.py ./docs/sample.pdf")
-    #     sys.exit(1)
-
-    target = "./data/raw/docling.pdf"#sys.argv[1]
-    pipeline = IngestionPipeline()
-
-    path = Path(target)
-    if path.is_dir():
-        total = pipeline.ingest_directory(target)
-        print(f"\n✅ Done — {total} total chunks indexed")
-    elif path.is_file():
-        chunks = pipeline.ingest_file(target)
-        print(f"\n✅ Done — {len(chunks)} chunks indexed from {path.name}")
-    else:
-        print(f"Error: {target} is not a valid file or directory")
+    if len(sys.argv) < 2:
+        print(__doc__)
         sys.exit(1)
+    if sys.argv[1] == "inspect":
+        inspect()
+    else:
+        ingest(sys.argv[1])

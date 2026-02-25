@@ -1,16 +1,19 @@
 """
-Evaluation entrypoint — build golden set, run RAGAS, analyze failures.
+Evaluation entrypoint.
 
 Usage:
-  python evaluate.py build          # Generate golden set from ingested docs
-  python evaluate.py run            # Run RAGAS over saved golden set
-  python evaluate.py analyze        # Analyze latest results for fix recommendations
-  python evaluate.py all            # build → run → analyze in sequence
-  python evaluate.py run --samples 10   # Quick run with subset
-"""
+  python cli/evaluate.py run                        # agentic mode (default)
+  python cli/evaluate.py run --mode linear          # linear RAG mode
+  python cli/evaluate.py run --samples 10           # subset of golden set
+  python cli/evaluate.py run --mode linear --samples 10
+  python cli/evaluate.py analyze                    # analyze latest results
 
-import logging
+Cache behaviour:
+  Pipeline outputs are cached per mode in evaluation/results/pipeline_cache_{mode}.json
+  Re-running reuses cache — delete cache file to force fresh pipeline run.
+"""
 import sys
+import logging
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -22,85 +25,62 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def cmd_build(n_samples: int = 25):
-    """Generate and save a golden test set."""
-    from core.llm_client import LLMClient
-    from evaluation.golden_set import GoldenSetBuilder
-
-    print(f"\n📋 Building golden set ({n_samples} samples)...")
-    builder = GoldenSetBuilder(llm=LLMClient())
-    samples = builder.generate_from_chunks(n_samples=n_samples)
-    builder.save(samples)
-    builder.export_csv(samples)
-
-    print(f"\n✅ Golden set saved:")
-    print(f"   JSON → ./evaluation/golden_set.json  (used by evaluator)")
-    print(f"   CSV  → ./evaluation/golden_set.csv   (review & edit this)")
-    print(f"\n⚠️  IMPORTANT: Review golden_set.csv before running evaluation.")
-    print(
-        f"   Auto-generated Q&A pairs may have errors — human review improves eval quality.\n"
-    )
-
-
-def cmd_run(n_samples: int | None = None):
-    """Run RAGAS evaluation over the golden set."""
-    from evaluation.golden_set import GoldenSetBuilder, GoldenSample
+def cmd_run(n_samples: int | None = None, mode: str = "agentic"):
+    from evaluation.golden_set import load_golden_set, summarise
     from evaluation.ragas_evaluator import RagasEvaluator
     from agents.graph import build_rag_graph
-    from core.llm_client import LLMClient
 
-    # Load golden set
-    builder = GoldenSetBuilder(llm=LLMClient())
-    try:
-        samples = builder.load_from_file()
-    except FileNotFoundError:
-        print("❌ Golden set not found. Run: python evaluate.py build")
+    if mode not in ("agentic", "linear"):
+        print(f"❌ Unknown mode: '{mode}'. Choose from: agentic, linear")
         sys.exit(1)
+
+    try:
+        samples = load_golden_set(exclude_types=["Irrelevant"])
+    except FileNotFoundError:
+        print("❌ Golden set not found at evaluation/golden_set.json")
+        sys.exit(1)
+
+    summarise(samples)
 
     if n_samples:
         import random
-
         samples = random.sample(samples, min(n_samples, len(samples)))
-        print(f"  Using {len(samples)} samples (subset)")
+        print(f"  Using {len(samples)} samples (subset)\n")
 
-    print(f"\n🔬 Running RAGAS evaluation on {len(samples)} samples...")
-    print(
-        f"   (This will make {len(samples) * 4} LLM calls — may take a few minutes)\n"
-    )
+    print(f"🔬 Running RAGAS [{mode}] on {len(samples)} samples...")
+    print(f"   (~{len(samples) * 4} LLM calls — may take several minutes)\n")
 
-    app = build_rag_graph()
+    # Build retriever and LLM once — shared between graph and linear mode
+    # Prevents two QdrantClient instances opening the same local file simultaneously
+    # LLM passed into retriever enables HyDE — generates hypothetical answer
+    # for dense search, closing query/document embedding space gap
+    from retrieval.store_factory import build_retriever
+    from core.llm_client import LLMClient
+    llm       = LLMClient()
+    retriever = build_retriever(llm=llm)   # HyDE enabled
+    app       = build_rag_graph(llm=llm, retriever=retriever)
+
     evaluator = RagasEvaluator()
-    result = evaluator.run(samples=samples, app=app)
-
-    return result
+    evaluator.run(samples=samples, app=app, mode=mode, retriever=retriever, llm=llm)
 
 
 def cmd_analyze():
-    """Analyze the most recent evaluation results."""
     from evaluation.failure_analyzer import FailureAnalyzer
-
     print("\n🔍 Analyzing latest evaluation results...\n")
     analyzer = FailureAnalyzer()
-    report = analyzer.analyze_latest()
-    print(report)
+    print(analyzer.analyze_latest())
 
 
-def main():
-    commands = {
-        "build": cmd_build,
-        "run": cmd_run,
-        "analyze": cmd_analyze,
-    }
-
+def _parse_args():
     args = sys.argv[1:]
-    if not args or args[0] not in (*commands, "all"):
+    if not args:
         print(__doc__)
         sys.exit(0)
 
     cmd = args[0]
-
-    # Parse --samples flag
     n_samples = None
+    mode = "agentic"
+
     if "--samples" in args:
         idx = args.index("--samples")
         try:
@@ -109,18 +89,28 @@ def main():
             print("⚠️  --samples requires an integer value")
             sys.exit(1)
 
-    if cmd == "all":
-        cmd_build(n_samples or 25)
-        print("\n" + "─" * 60 + "\n")
-        result = cmd_run(n_samples)
-        print("\n" + "─" * 60 + "\n")
-        cmd_analyze()
-    elif cmd == "build":
-        cmd_build(n_samples or 25)
-    elif cmd == "run":
-        cmd_run(n_samples)
+    if "--mode" in args:
+        idx = args.index("--mode")
+        try:
+            mode = args[idx + 1]
+        except IndexError:
+            print("⚠️  --mode requires a value: agentic or linear")
+            sys.exit(1)
+
+    return cmd, n_samples, mode
+
+
+def main():
+    cmd, n_samples, mode = _parse_args()
+
+    if cmd == "run":
+        cmd_run(n_samples=n_samples, mode=mode)
     elif cmd == "analyze":
         cmd_analyze()
+    else:
+        print(f"Unknown command: {cmd}")
+        print(__doc__)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

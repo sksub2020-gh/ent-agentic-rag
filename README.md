@@ -1,4 +1,4 @@
-# Enterprise RAG Project
+# Enterprise RAG Project - 2
 
 ## Stack
 - LLM: Mistral-7B via Ollama (OpenAI-compatible)
@@ -88,3 +88,7 @@ python evaluate.py analyze
 # Or all in one
 python evaluate.py all
 ```
+
+'''
+pip show ragas langchain langchain-openai datasets 2>/dev/null | grep -E "Name|Version"
+'''

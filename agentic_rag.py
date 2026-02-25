@@ -3,15 +3,15 @@ Agentic RAG — main entrypoint.
 Builds the graph once, then runs queries interactively or from CLI args.
 
 Usage:
-  python agentic_rag.py                          # interactive REPL
-  python agentic_rag.py "What is X?"             # single query
-  python agentic_rag.py --stream "What is X?"    # stream tokens (future)
+  python cli/agentic_rag.py                      # interactive REPL (Read Eval Print Loop)
+  python cli/agentic_rag.py "What is X?"         # single query
 """
-
-import logging
 import sys
+import logging
+from pathlib import Path
 from dotenv import load_dotenv
 
+sys.path.insert(0, str(Path(__file__).parent.parent))
 load_dotenv()
 
 logging.basicConfig(
@@ -27,24 +27,32 @@ def print_result(result: dict) -> None:
     print(f"  Query   : {result['query']}")
     print(f"  Route   : {result['route']} ({result['router_reasoning']})")
     print(f"  Retries : {result['retry_count']}")
-    print(
-        f"  Grounded: {'✅' if result['grounded'] else '❌'} — {result['critique_reasoning']}"
-    )
+    print(f"  Grounded: {'✅' if result['grounded'] else '❌'} — {result['critique_reasoning']}")
     print("─" * 60)
     print(f"\n{result['answer']}\n")
 
     if result["sources"]:
         print("📚 Sources:")
         for s in result["sources"]:
-            print(
-                f"  [{s['index']}] {s['source']} | Page {s['page']} | score={s['score']}"
-            )
+            print(f"  [{s['index']}] {s['source']} | Page {s['page']} | score={s['score']}")
     print("═" * 60 + "\n")
 
 
 def main():
     from agents.graph import build_rag_graph, run_query
     from core.llm_client import LLMClient
+    from config.settings import config
+
+    import phoenix as px
+    from phoenix.otel import register
+    from openinference.instrumentation.langchain import LangChainInstrumentor
+
+    # 1. Initialize Phoenix and the OpenTelemetry bridge
+    px.launch_app()
+    register(project_name=f"{config.project_name} - agentic-rag.py", auto_instrument=True)
+    # 2. Prevent the "Already instrumented" warning
+    if not LangChainInstrumentor().is_instrumented_by_opentelemetry:
+        LangChainInstrumentor().instrument()
 
     # Health check before building the graph
     llm = LLMClient()

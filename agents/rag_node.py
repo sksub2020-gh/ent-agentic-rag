@@ -58,6 +58,7 @@ def _format_context(chunks: list[RetrievedChunk]) -> tuple[str, list[dict]]:
             "page":    page,
             "section": section,
             "score":   round(rc.score, 4),
+            "content": rc.chunk.content,
         })
 
     return "\n\n---\n\n".join(context_blocks), sources

@@ -52,10 +52,12 @@ def cmd_run(n_samples: int | None = None, mode: str = "agentic"):
 
     # Build retriever and LLM once — shared between graph and linear mode
     # Prevents two QdrantClient instances opening the same local file simultaneously
+    # LLM passed into retriever enables HyDE — generates hypothetical answer
+    # for dense search, closing query/document embedding space gap
     from retrieval.store_factory import build_retriever
     from core.llm_client import LLMClient
-    retriever = build_retriever()
     llm       = LLMClient()
+    retriever = build_retriever(llm=llm)   # HyDE enabled
     app       = build_rag_graph(llm=llm, retriever=retriever)
 
     evaluator = RagasEvaluator()

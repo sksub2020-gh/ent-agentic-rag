@@ -6,12 +6,21 @@ import logging
 from flashrank import Ranker, RerankRequest
 
 from core.interfaces import (
-    VectorStoreBase, SparseStoreBase, EmbedderBase, RerankerBase, RetrievedChunk
+    VectorStoreBase, SparseStoreBase, EmbedderBase, RerankerBase, RetrievedChunk,
+    LLMClientBase,
 )
 from config.settings import config
 
 logger = logging.getLogger(__name__)
 
+
+
+# HyDE — Hypothetical Document Embeddings
+# Used to bridge the query/document embedding space mismatch.
+# Applied to dense search only — sparse search uses original query (keyword matching).
+HYDE_SYSTEM_PROMPT = """You are a helpful assistant. Given a question, write a short factual
+passage (2-4 sentences) that would directly answer it, as if extracted from a technical document.
+Write only the passage — no preamble, no explanation, no metadata."""
 
 # ---------------------------------------------------------------------------
 # FlashRank Reranker (implements RerankerBase)
@@ -117,63 +126,98 @@ class HybridRetriever:
         sparse_store: SparseStoreBase,
         embedder: EmbedderBase,
         reranker: RerankerBase | None = None,
+        llm: LLMClientBase | None = None,
     ):
         self.vector_store = vector_store
         self.sparse_store = sparse_store
-        self.embedder = embedder
-        self.reranker = reranker or FlashRankReranker()
-        self._use_sql_hybrid = config.store_backend.lower() == 'supabase' #hasattr(vector_store, "hybrid_search")
+        self.embedder     = embedder
+        self.reranker     = reranker or FlashRankReranker()
+        self.llm          = llm      # None = HyDE disabled
+        self._use_sql_hybrid = hasattr(vector_store, "hybrid_search")
+        hyde_status = "enabled" if llm else "disabled"
+
         log_text = {"supabase": "SQL Hybrid Search (Supabase)",
-                    "milvus": "Python RRF Search (Milvus+BM25S)",
-                    "qdrant": "Python Hybrid Search (Qdrant)"}
+            "milvus": "Python RRF Search (Milvus+BM25S)",
+            "qdrant": "Python Hybrid Search (Qdrant)"}
+        
         logger.info(
             f"HybridRetriever ready — "
             f"{log_text[config.store_backend.lower()]}"
+            f"| HyDE: {hyde_status}"
         )
-        print("....")
 
     def retrieve(self, query: str, top_k: int | None = None) -> list[RetrievedChunk]:
         """
-        Full hybrid retrieval.
-        Returns top_k reranked chunks ready for LLM context.
+        Full hybrid retrieval with optional HyDE.
+
+        HyDE (when llm is provided):
+          Dense search  → embed(hypothetical_answer)  — closes query/doc space gap
+          Sparse search → original query              — keyword matching stays exact
+          FlashRank     → reranks with original query — relevance judged on real question
+
+        Without HyDE (llm=None):
+          Both dense and sparse use original query embedding.
         """
         top_k = top_k or config.retrieval.top_k_rerank
 
-        if self._use_sql_hybrid:
-            fused = self._retrieve_sql(query)
-        else:
-            fused = self._retrieve_python(query)
+        # Generate hypothetical answer for dense embedding if HyDE enabled
+        hyde_query = self._hyde_query(query) if self.llm else query
 
-        # FlashRank reranking — same for both paths
+        if self._use_sql_hybrid:
+            fused = self._retrieve_sql(query, hyde_query=hyde_query)
+        else:
+            fused = self._retrieve_python(query, hyde_query=hyde_query)
+
+        # FlashRank always uses original query — reranks on real question intent
         reranked = self.reranker.rerank(query, fused, top_k=top_k)
         logger.info(f"HybridRetriever → {len(reranked)} final chunks for: '{query[:60]}'")
         return reranked
 
-    def _retrieve_sql(self, query: str) -> list[RetrievedChunk]:
+    def _hyde_query(self, query: str) -> str:
+        """
+        Generate a hypothetical document passage for the query.
+        Its embedding will be closer to real document chunks than the raw question.
+        Falls back to original query on any LLM failure.
+        """
+        try:
+            hypothetical = self.llm.generate(
+                system_prompt=HYDE_SYSTEM_PROMPT,
+                user_prompt=query,
+            )
+            hypothetical = hypothetical.strip()
+            if hypothetical:
+                logger.debug(f"HyDE generated: '{hypothetical[:80]}'")
+                return hypothetical
+        except Exception as e:
+            logger.warning(f"HyDE generation failed ({e}) — falling back to original query")
+        return query
+
+    def _retrieve_sql(self, query: str, hyde_query: str | None = None) -> list[RetrievedChunk]:
         """
         Path A: single SQL query handles dense + sparse + RRF.
-        Supabase round trips: 1 (embed) + 1 (hybrid_search) = 2 total.
+        Dense uses hyde_query embedding; sparse uses original query text.
         """
-        query_embedding = self.embedder.embed_query(query)
-
-        # Fetch more candidates than top_k_rerank so FlashRank has room to work
-        candidate_k = max(config.retrieval.top_k_dense, config.retrieval.top_k_sparse)
+        dense_query  = hyde_query or query
+        query_embedding = self.embedder.embed_query(dense_query)
+        candidate_k  = max(config.retrieval.top_k_dense, config.retrieval.top_k_sparse)
 
         fused = self.vector_store.hybrid_search(
             query_embedding=query_embedding,
-            query_text=query,
+            query_text=query,          # sparse always uses original query
             top_k=candidate_k,
             rrf_k=config.retrieval.rrf_k,
         )
         logger.debug(f"SQL hybrid: {len(fused)} fused candidates")
         return fused
 
-    def _retrieve_python(self, query: str) -> list[RetrievedChunk]:
+    def _retrieve_python(self, query: str, hyde_query: str | None = None) -> list[RetrievedChunk]:
         """
         Path B: separate dense + sparse calls, fused in Python via RRF.
+        Dense uses hyde_query embedding; sparse uses original query text.
         Used for Milvus + BM25S.
         """
-        query_embedding = self.embedder.embed_query(query)
+        dense_query     = hyde_query or query
+        query_embedding = self.embedder.embed_query(dense_query)
 
         dense_results = self.vector_store.search(
             query_embedding, top_k=config.retrieval.top_k_dense
@@ -182,7 +226,7 @@ class HybridRetriever:
 
         if hasattr(self.sparse_store, "search_sparse"):
             sparse_results = self.sparse_store.search_sparse(
-                query, top_k=config.retrieval.top_k_sparse
+                query, top_k=config.retrieval.top_k_sparse   # original query for sparse
             )
         else:
             sparse_results = self.sparse_store.search(

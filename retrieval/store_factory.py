@@ -9,7 +9,6 @@ Controlled by STORE_BACKEND in .env:
     qdrant    → QdrantStore    (local dev, native hybrid)
     milvus    → MilvusLiteStore + BM25SStore (fallback)
 """
-
 import logging
 
 logger = logging.getLogger(__name__)
@@ -17,17 +16,14 @@ logger = logging.getLogger(__name__)
 
 # ── Backend builders ──────────────────────────────────────────────────────────
 
-
 def _build_supabase(embedder):
     from retrieval.supabase_store import SupabaseStore
-
     store = SupabaseStore()
     return store, store
 
 
 def _build_qdrant(embedder):
     from retrieval.qdrant_store import QdrantStore
-
     store = QdrantStore(dimension=embedder.dimension)
     return store, store
 
@@ -35,19 +31,17 @@ def _build_qdrant(embedder):
 def _build_milvus(embedder):
     from retrieval.milvus_store import MilvusLiteStore
     from retrieval.bm25_store import BM25SStore
-
     return MilvusLiteStore(dimension=embedder.dimension), BM25SStore()
 
 
 BACKENDS = {
     "supabase": _build_supabase,
-    "qdrant": _build_qdrant,
-    "milvus": _build_milvus,
+    "qdrant":   _build_qdrant,
+    "milvus":   _build_milvus,
 }
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
-
 
 def build_stores(embedder):
     """
@@ -55,7 +49,6 @@ def build_stores(embedder):
     Used by ingestion pipeline — stores only, no retriever.
     """
     from config.settings import config
-
     builder = BACKENDS.get(config.store_backend)
     if not builder:
         raise ValueError(
@@ -66,11 +59,15 @@ def build_stores(embedder):
     return builder(embedder)
 
 
-def build_retriever(embedder=None):
+def build_retriever(embedder=None, llm=None):
     """
     Returns a fully configured HybridRetriever for the configured backend.
     Used by rag_query, app.py, graph.py — anything that queries.
-    Pass an existing embedder to avoid loading the model twice.
+
+    Args:
+        embedder: Pass existing embedder to avoid loading model twice.
+        llm:      Pass LLMClient to enable HyDE (recommended for best quality).
+                  None = HyDE disabled (faster, slightly lower recall).
     """
     from ingestion.embedder import MpetEmbedder
     from retrieval.hybrid_retriever import HybridRetriever, FlashRankReranker
@@ -83,18 +80,20 @@ def build_retriever(embedder=None):
         sparse_store=sparse_store,
         embedder=embedder,
         reranker=FlashRankReranker(),
+        llm=llm,    # None = HyDE off, LLMClient = HyDE on
     )
 
 
 def build_pipeline():
     """
     Returns (llm, retriever) — full pipeline ready for querying.
+    LLM is injected into retriever for HyDE — single model instance shared.
     Used by app.py and agentic_rag.py.
     """
     from core.llm_client import LLMClient
     from ingestion.embedder import MpetEmbedder
 
-    embedder = MpetEmbedder()
-    retriever = build_retriever(embedder=embedder)
-    llm = LLMClient()
+    embedder  = MpetEmbedder()
+    llm       = LLMClient()
+    retriever = build_retriever(embedder=embedder, llm=llm)   # HyDE enabled
     return llm, retriever

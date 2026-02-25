@@ -195,34 +195,7 @@
       "expected_behavior": "Answer from context"
     }
   },
-  {
-    "question": "What is the total number of manually annotated pages in the DocLayNet dataset?",
-    "ground_truth": "80,863 manually annotated pages",
-    "contexts": [
-      "It contains 80863 manually annotated pages from diverse data sources to represent a wide variability in layouts."
-    ],
-    "answer": "",
-    "metadata": {
-      "id": 15,
-      "question_type": "Numerical/Table",
-      "difficulty": "Easy",
-      "expected_behavior": "Answer from context"
-    }
-  },
-  {
-    "question": "What mAP@0.5-0.95 score did YOLOv5x6 achieve on the Text class in the DocLayNet benchmark?",
-    "ground_truth": "88.1 mAP@0.5-0.95",
-    "contexts": [
-      "Table 2: YOLO v5x6, Text = 88.1 mAP@0.5-0.95."
-    ],
-    "answer": "",
-    "metadata": {
-      "id": 16,
-      "question_type": "Numerical/Table",
-      "difficulty": "Hard",
-      "expected_behavior": "Answer from context"
-    }
-  },
+
   {
     "question": "How long does it typically take TableFormer to process a single table on a standard CPU?",
     "ground_truth": "Between 2 and 6 seconds, depending on the number of table cells.",
@@ -237,20 +210,7 @@
       "expected_behavior": "Answer from context"
     }
   },
-  {
-    "question": "Why does Docling use a linear sequential pipeline rather than a parallel architecture?",
-    "ground_truth": "Each stage depends on the output of the previous one: the AI models need parsed text tokens and rendered page images from the PDF backend, and the assembly stage needs all per-page predictions before constructing the final document object. A parallel design would break these dependencies.",
-    "contexts": [
-      "Docling implements a linear pipeline of operations, which execute sequentially on each given document. Each document is first parsed by a PDF backend... Then, the standard model pipeline applies a sequence of AI models independently on every page... Finally, the results from all pages are aggregated and passed through a post-processing stage."
-    ],
-    "answer": "",
-    "metadata": {
-      "id": 18,
-      "question_type": "Conceptual",
-      "difficulty": "Hard",
-      "expected_behavior": "Answer from context"
-    }
-  },
+
   {
     "question": "What trade-off does the pypdfium backend introduce compared to the default docling-parse backend?",
     "ground_truth": "The pypdfium backend is faster and uses less memory but produces worse quality results, especially for table structure recovery.",

@@ -50,10 +50,16 @@ def cmd_run(n_samples: int | None = None, mode: str = "agentic"):
     print(f"🔬 Running RAGAS [{mode}] on {len(samples)} samples...")
     print(f"   (~{len(samples) * 4} LLM calls — may take several minutes)\n")
 
-    # Build graph — used for agentic mode; linear mode builds its own retriever
-    app = build_rag_graph()
+    # Build retriever and LLM once — shared between graph and linear mode
+    # Prevents two QdrantClient instances opening the same local file simultaneously
+    from retrieval.store_factory import build_retriever
+    from core.llm_client import LLMClient
+    retriever = build_retriever()
+    llm       = LLMClient()
+    app       = build_rag_graph(llm=llm, retriever=retriever)
+
     evaluator = RagasEvaluator()
-    evaluator.run(samples=samples, app=app, mode=mode)
+    evaluator.run(samples=samples, app=app, mode=mode, retriever=retriever, llm=llm)
 
 
 def cmd_analyze():

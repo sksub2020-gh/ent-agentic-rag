@@ -28,7 +28,6 @@ from datasets import Dataset
 from ragas import evaluate
 from ragas.metrics import (
     faithfulness,
-    context_precision,
     context_recall,
 )
 from ragas.llms import LangchainLLMWrapper
@@ -64,10 +63,17 @@ _CITATION_RE = re.compile(
     re.IGNORECASE
 )
 
+# Disclaimer appended by critique_node at max retries — strip before RAGAS scoring
+_DISCLAIMER_RE = re.compile(
+    r'\n*\u26a0\ufe0f\s*Note:.*?(?=\n\n|$)',   # ⚠️ Note: ... (unicode)
+    re.DOTALL
+)
+
 
 def _clean_answer(answer: str) -> str:
-    """Strip citation markers before passing answer to RAGAS."""
+    """Strip citation markers and disclaimer text before passing answer to RAGAS."""
     cleaned = _CITATION_RE.sub("", answer)
+    cleaned = _DISCLAIMER_RE.sub("", cleaned)
     cleaned = re.sub(r" {2,}", " ", cleaned).strip()
     return cleaned or answer
 
@@ -122,6 +128,56 @@ def _cosine_answer_relevancy(
 
     valid = [s for s in scores if s is not None]
     return sum(valid) / len(valid) if valid else 0.0
+
+
+def _cosine_context_precision(
+    questions: list[str],
+    contexts_list: list[list[str]],
+    embedder=None,
+) -> float:
+    """
+    Replacement for RAGAS context_precision.
+
+    RAGAS context_precision uses the LLM to judge whether each retrieved chunk
+    is relevant to the question — Mistral-7B returns all-false verdicts because
+    it doesn't follow the binary yes/no JSON format reliably.
+
+    This implementation computes cosine similarity between the question embedding
+    and each context chunk embedding. A chunk is considered relevant if similarity
+    exceeds a threshold (0.5). Precision = relevant_chunks / total_chunks.
+
+    Score interpretation:
+      1.0  — all retrieved chunks are relevant to the question
+      0.5  — half the chunks are relevant
+      0.0  — no chunks are relevant (retrieval failed completely)
+    """
+    if embedder is None:
+        from ingestion.embedder import MpetEmbedder
+        embedder = MpetEmbedder()
+
+    RELEVANCE_THRESHOLD = 0.5
+    sample_precisions = []
+
+    for question, contexts in zip(questions, contexts_list):
+        if not contexts or contexts == [""]:
+            sample_precisions.append(0.0)
+            continue
+
+        # Embed question + all contexts in one batch
+        texts      = [question] + contexts
+        embeddings = embedder.embed(texts)
+        q_emb      = np.array(embeddings[0])
+        c_embs     = [np.array(e) for e in embeddings[1:]]
+
+        relevant = 0
+        for c_emb in c_embs:
+            sim = float(np.dot(q_emb, c_emb) / (np.linalg.norm(q_emb) * np.linalg.norm(c_emb) + 1e-8))
+            if sim >= RELEVANCE_THRESHOLD:
+                relevant += 1
+
+        sample_precisions.append(relevant / len(contexts))
+
+    return sum(sample_precisions) / len(sample_precisions) if sample_precisions else 0.0
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -186,23 +242,12 @@ class EvalResult:
 # ── Evaluator ─────────────────────────────────────────────────────────────────
 
 
-def _run_linear_query(question: str, app) -> dict:
-    """Run linear RAG pipeline for evaluation — bypasses router/critique/guards."""
-    from retrieval.store_factory import build_retriever
-    from ingestion.embedder import MpetEmbedder
-    from core.llm_client import LLMClient
+def _run_linear_query(question: str, retriever, llm) -> dict:
+    """
+    Run linear RAG pipeline for evaluation — bypasses router/critique/guards.
+    Accepts retriever and llm directly — no new Qdrant connection opened.
+    """
     from agents.rag_node import RAG_SYSTEM_PROMPT, build_context_prompt
-
-    # Reuse cached retriever/llm if available on app object
-    if hasattr(app, "_eval_retriever"):
-        retriever = app._eval_retriever
-        llm       = app._eval_llm
-    else:
-        embedder  = MpetEmbedder()
-        retriever = build_retriever(embedder=embedder)
-        llm       = LLMClient()
-        app._eval_retriever = retriever
-        app._eval_llm       = llm
 
     chunks = retriever.retrieve(question)
     if not chunks:
@@ -236,8 +281,9 @@ class RagasEvaluator:
         )
         self.ragas_llm = LangchainLLMWrapper(eval_llm)
 
-        # answer_relevancy replaced with cosine similarity — no embedder needed for RAGAS
-        self.metrics = [faithfulness, context_precision, context_recall]
+        # answer_relevancy and context_precision replaced with embedding-based implementations
+        # Mistral-7B fails RAGAS's internal LLM-as-judge JSON format for both metrics
+        self.metrics = [faithfulness, context_recall]
         for metric in self.metrics:
             metric.llm = self.ragas_llm
 
@@ -249,23 +295,64 @@ class RagasEvaluator:
 
     # ── Pipeline loop ─────────────────────────────────────────────────────────
 
-    def _run_pipeline(self, eval_samples: list[GoldenSample], app, mode: str = "agentic") -> tuple[dict, list]:
+    def _cache_key(self, eval_samples: list[GoldenSample], mode: str, retriever=None) -> str:
+        """
+        Hash of: questions + mode + prompts + corpus fingerprint + embedding model.
+        Auto-invalidates on: question changes, prompt changes, re-ingestion, model swap.
+        """
+        import hashlib
+        from agents.rag_node import RAG_SYSTEM_PROMPT
+        from agents.critique_node import CRITIQUE_SYSTEM_PROMPT
+        from config.settings import config
+
+        # Corpus fingerprint — point count + collection name from Qdrant
+        # Changes whenever corpus is wiped and re-ingested
+        corpus_fingerprint = "unknown"
+        try:
+            if retriever and hasattr(retriever, "vector_store"):
+                count = retriever.vector_store.count()
+                # Also grab collection-level info if available
+                if hasattr(retriever.vector_store, "client"):
+                    info = retriever.vector_store.client.get_collection(
+                        retriever.vector_store.collection
+                    )
+                    dim = info.config.params.vectors.get("dense").size
+                    corpus_fingerprint = f"n={count},dim={dim}"
+                else:
+                    corpus_fingerprint = f"n={count}"
+        except Exception:
+            pass  # non-fatal — cache just won't invalidate on corpus change
+
+        fingerprint = json.dumps({
+            "mode":               mode,
+            "questions":          [s.question for s in eval_samples],
+            "rag_prompt":         RAG_SYSTEM_PROMPT,
+            "critique_prompt":    CRITIQUE_SYSTEM_PROMPT if mode == "agentic" else "",
+            "embedding_model":    config.embedding.model_name,
+            "corpus_fingerprint": corpus_fingerprint,
+        }, sort_keys=True)
+        return hashlib.md5(fingerprint.encode()).hexdigest()[:12]
+
+    def _run_pipeline(self, eval_samples: list[GoldenSample], app, mode: str = "agentic", retriever=None, llm=None) -> tuple[dict, list]:
         """
         Run RAG pipeline on each sample and return (ragas_data, per_sample).
-        Results are cached to CACHE_PATH — re-running loads from cache
-        instead of re-running the pipeline (saves LLM calls after a RAGAS crash).
+        Results are cached per mode — cache auto-invalidates when questions or
+        prompts change so manual deletion is never needed.
         """
         from agents.graph import run_query
 
         RESULTS_DIR.mkdir(parents=True, exist_ok=True)
         cache_path = RESULTS_DIR / f"pipeline_cache_{mode}.json"
+        cache_key  = self._cache_key(eval_samples, mode, retriever=retriever)
 
         if cache_path.exists():
-            logger.info(f"📂 Loading cached pipeline results [{mode}] — {cache_path}")
-            logger.info(f"   Delete {cache_path} to re-run pipeline")
             with open(cache_path) as f:
                 cache = json.load(f)
-            return cache["ragas_data"], cache["per_sample"]
+            if cache.get("cache_key") == cache_key:
+                logger.info(f"📂 Cache hit [{mode}] — loading pipeline results")
+                return cache["ragas_data"], cache["per_sample"]
+            else:
+                logger.info(f"🔄 Cache invalidated [{mode}] — questions or prompts changed, re-running pipeline")
 
         ragas_data = {"question": [], "answer": [], "contexts": [], "ground_truth": []}
         per_sample = []
@@ -274,7 +361,7 @@ class RagasEvaluator:
             logger.info(f"  [{i+1}/{len(eval_samples)}] {sample.question[:70]}")
             try:
                 if mode == "linear":
-                    result = _run_linear_query(sample.question, app)
+                    result = _run_linear_query(sample.question, retriever, llm)
                 else:
                     result = run_query(sample.question, app=app)
 
@@ -291,8 +378,11 @@ class RagasEvaluator:
                     retrieved = sample.contexts or [""]
 
                 # Merge retrieved + reference contexts (dedup, preserve order)
-                # Gives context_recall a fair chance by including reference chunks
+                # Cap at 3 contexts for RAGAS — Mistral-7B faithfulness scorer
+                # times out or returns malformed JSON when given too many chunks
+                MAX_RAGAS_CONTEXTS = 3
                 all_contexts = list(dict.fromkeys(retrieved + sample.contexts)) or [""]
+                all_contexts = all_contexts[:MAX_RAGAS_CONTEXTS]
 
                 ragas_data["question"].append(sample.question)
                 ragas_data["answer"].append(_clean_answer(result.get("answer", "")))
@@ -326,7 +416,13 @@ class RagasEvaluator:
 
         # Save before RAGAS scoring — crash-safe checkpoint
         with open(cache_path, "w") as f:
-            json.dump({"ragas_data": ragas_data, "per_sample": per_sample}, f, indent=2)
+            json.dump({
+                "cache_key":  cache_key,
+                "mode":       mode,
+                "n_samples":  len(eval_samples),
+                "ragas_data": ragas_data,
+                "per_sample": per_sample,
+            }, f, indent=2)
         logger.info(f"✅ Pipeline results cached [{mode}] → {cache_path}")
 
         return ragas_data, per_sample
@@ -338,11 +434,20 @@ class RagasEvaluator:
         samples: list[GoldenSample],
         app=None,
         mode: str = "agentic",
+        retriever=None,
+        llm=None,
         save_results: bool = True,
     ) -> EvalResult:
         from agents.graph import build_rag_graph
+        from retrieval.store_factory import build_retriever
+        from core.llm_client import LLMClient
 
-        app = app or build_rag_graph()
+        # Build shared retriever+llm if not provided — avoids double Qdrant connections
+        if retriever is None:
+            retriever = build_retriever()
+        if llm is None:
+            llm = LLMClient()
+        app = app or build_rag_graph(llm=llm, retriever=retriever)
 
         # Filter samples RAGAS can't meaningfully score
         eval_samples = [
@@ -356,25 +461,39 @@ class RagasEvaluator:
         logger.info(f"Evaluating {len(eval_samples)} samples...")
 
         # Step 1 — run pipeline (or load from cache)
-        ragas_data, per_sample = self._run_pipeline(eval_samples, app, mode=mode)
+        ragas_data, per_sample = self._run_pipeline(eval_samples, app, mode=mode, retriever=retriever, llm=llm)
 
         # Step 2 — run RAGAS metrics
-        logger.info("Computing RAGAS metrics — this may take several minutes...")
+        # run_config: sequential execution (is_async=False) prevents Ollama overload
+        # With parallel execution, 21 samples × 3 contexts = 63 concurrent Mistral-7B
+        # calls cause TimeoutErrors that collapse faithfulness score to 0.0
+        logger.info("Computing RAGAS metrics (sequential) — this may take several minutes...")
+        from ragas.run_config import RunConfig
+        run_config = RunConfig(
+            timeout=120,        # 2 min per LLM call — generous for local Ollama
+            max_retries=2,      # retry on transient timeout
+            max_workers=1,      # sequential — no concurrent Ollama calls
+        )
         dataset      = Dataset.from_dict(ragas_data)
-        ragas_result = evaluate(dataset=dataset, metrics=self.metrics)
+        ragas_result = evaluate(dataset=dataset, metrics=self.metrics, run_config=run_config)
 
-        # Custom answer_relevancy via cosine similarity (replaces broken RAGAS metric)
+        # Custom metrics — replaces broken RAGAS LLM-as-judge implementations
         ar_score = _cosine_answer_relevancy(
             questions=ragas_data["question"],
             answers=ragas_data["answer"],
             embedder=self.embedder,
         )
+        cp_score = _cosine_context_precision(
+            questions=ragas_data["question"],
+            contexts_list=ragas_data["contexts"],
+            embedder=self.embedder,
+        )
 
         scores = {
-            "faithfulness":      round(_safe_float(ragas_result["faithfulness"]),      4),
-            "answer_relevancy":  round(ar_score,                                       4),
-            "context_precision": round(_safe_float(ragas_result["context_precision"]), 4),
-            "context_recall":    round(_safe_float(ragas_result["context_recall"]),    4),
+            "faithfulness":      round(_safe_float(ragas_result["faithfulness"]), 4),
+            "answer_relevancy":  round(ar_score,                                  4),
+            "context_precision": round(cp_score,                                  4),
+            "context_recall":    round(_safe_float(ragas_result["context_recall"]), 4),
         }
         passed       = {m: scores[m] >= THRESHOLDS[m] for m in scores}
         overall_pass = all(passed.values())

@@ -105,17 +105,18 @@ def critique_node(state: AgentState, llm: LLMClientBase) -> AgentState:
     # The conditional edge in the graph will route back to rag_node
     new_retry_count = retry_count + 1 if not grounded else retry_count
 
-    # If we've hit max retries, append a disclaimer to the answer
+    # If we've hit max retries, return a clean insufficient context message
+    # (no disclaimer append — INSUFFICIENT_CONTEXT is already self-explanatory
+    #  and appended text pollutes faithfulness and answer_relevancy scores)
     if not grounded and new_retry_count > MAX_RETRIES:
-        logger.warning(f"[Critique] Max retries ({MAX_RETRIES}) reached — appending disclaimer")
-        answer_with_disclaimer = (
-            f"{answer}\n\n"
-            f"⚠️ Note: This answer may not be fully supported by the available documents. "
-            f"Please verify with the original sources."
+        logger.warning(f"[Critique] Max retries ({MAX_RETRIES}) reached — returning INSUFFICIENT_CONTEXT")
+        final_answer = (
+            answer if "INSUFFICIENT_CONTEXT" in answer
+            else "I was unable to find sufficient information in the knowledge base to answer this question reliably."
         )
         return {
             **state,
-            "answer": answer_with_disclaimer,
+            "answer": final_answer,
             "grounded": True,           # Force exit from retry loop
             "critique_reasoning": f"Max retries reached. Last issue: {reasoning}",
             "retry_count": new_retry_count,

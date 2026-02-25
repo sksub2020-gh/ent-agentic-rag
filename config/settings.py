@@ -18,12 +18,12 @@ from pydantic import AfterValidator, Field, SecretStr
 # Project root
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-# 1. Define the reusable logic
-def resolve_abs_path(v: Path) -> Path:
-    return v if v.is_absolute() else PROJECT_ROOT / v
+# # 1. Define the reusable logic
+# def resolve_abs_path(v: Path) -> Path:
+#     return v if v.is_absolute() else PROJECT_ROOT / v
 
-# 2. Create a reusable type alias
-AbsPath = Annotated[Path, AfterValidator(resolve_abs_path)]
+# # 2. Create a reusable type alias
+# AbsPath = Annotated[Path, AfterValidator(resolve_abs_path)]
 
 class LLMConfig(BaseSettings):
     """
@@ -42,30 +42,35 @@ class LLMConfig(BaseSettings):
     temperature: float = 0.1
     max_tokens:  int   = 1024
 
-    # model_config = {"env_prefix": "LLM_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+    model_config = {"env_prefix": "LLM_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 class EmbeddingConfig(BaseSettings):
-    model_name: str       = "sentence-transformers/all-mpnet-base-v2"
-    dimension:  int | None = None
-    device:     str       = "cpu"
+    model_name:         str         = "BAAI/bge-large-en-v1.5" 
+    # "sentence-transformers/all-mpnet-base-v2"
+    dimension:          int | None  = None
+    device:             str         = "cpu"
+    local_files_only:   bool        = True
+    query_prefix:       str         = "Represent this sentence for searching relevant passages: "
+    # BGE models require this prefix on queries (not on documents) for best retrieval quality
+    # Set EMBEDDING_QUERY_PREFIX="" in .env to disable if using a different model
 
-    # model_config = {"env_prefix": "EMBEDDING_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+    model_config = {"env_prefix": "EMBEDDING_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 class MilvusConfig(BaseSettings):
-    uri:             AbsPath = "data/index/milvus_lite.db"
+    uri:             str = "data/index/milvus_lite.db"
     collection_name: str = "rag_docs"
     metric_type:     str = "COSINE"
 
-    # model_config = {"env_prefix": "MILVUS_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+    model_config = {"env_prefix": "MILVUS_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 class BM25Config(BaseSettings):
-    index_path: AbsPath = "data/index/bm25_index"
+    index_path: str = "data/index/bm25_index"
     method:     str = "lucene"
 
-    # model_config = {"env_prefix": "BM25_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+    model_config = {"env_prefix": "BM25_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 class RetrievalConfig(BaseSettings):
@@ -75,7 +80,7 @@ class RetrievalConfig(BaseSettings):
     rrf_k:          int   = 60
     reranker_model: str   = "ms-marco-MiniLM-L-12-v2"
 
-    # model_config = {"env_prefix": "RETRIEVAL_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+    model_config = {"env_prefix": "RETRIEVAL_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 class DoclingConfig(BaseSettings):
@@ -85,15 +90,14 @@ class DoclingConfig(BaseSettings):
     supported_formats: list = Field(default=["pdf", "html", "docx"])
     ocr:               bool = False   # set DOCLING_OCR=true to enable EasyOCR
 
-
-    # model_config = {"env_prefix": "DOCLING_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+    model_config = {"env_prefix": "DOCLING_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 class SupabaseConfig(BaseSettings):
     connection_string: SecretStr = ""
     table_name:        str = "rag_chunks"
 
-    # model_config = {"env_prefix": "SUPABASE_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+    model_config = {"env_prefix": "SUPABASE_", "env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 class QdrantConfig(BaseSettings):
     """
@@ -112,7 +116,7 @@ class QdrantConfig(BaseSettings):
         QDRANT_API_KEY=your-key   # only for Qdrant Cloud
     """
     mode:            str       = "local"            # local | memory | remote
-    path:            AbsPath   = "data/index/qdrant"    # used when mode=local
+    path:            str   = "data/index/qdrant"    # used when mode=local
     url:             str       = "http://localhost:6333"  # used when mode=remote
     api_key:         SecretStr = ""                 # Qdrant Cloud only
     collection_name: str       = "rag_chunks"
@@ -153,14 +157,14 @@ class AppConfig(BaseSettings):
     langchain_project: str = project_name
 
     # Environment variable loading
-    model_config = SettingsConfigDict(
-        env_file=env_file_path, 
-        env_file_encoding='utf-8',
-        env_nested_delimiter="__",
-        extra='ignore'
-    )
+    # model_config = SettingsConfigDict(
+    #     env_file=env_file_path, 
+    #     env_file_encoding='utf-8',
+    #     env_nested_delimiter="__",
+    #     extra='ignore'
+    # )
 
-    # model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+    model_config = {"env_file": env_file_path, "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 # Singleton — imported everywhere as: from config.settings import config

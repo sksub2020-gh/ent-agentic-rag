@@ -20,7 +20,7 @@ dependencies = [
     "psycopg2-binary>=2.9.11",
     "pymilvus[milvus-lite]>=2.6.9",
     "python-dotenv>=1.2.1",
-    "qdrant-client>=1.17.0",
+    "qdrant-client==1.11.3",
     "ragas>=0.4.3",
     "sentence-transformers>=5.2.3",
     "setuptools<81",

@@ -1,4 +1,4 @@
-# Enterprise RAG Project
+# Enterprise RAG Project - 2
 
 ## Stack
 - LLM: Mistral-7B via Ollama (OpenAI-compatible)

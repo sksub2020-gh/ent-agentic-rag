@@ -16,6 +16,7 @@ Add to requirements.txt:
     fastembed>=0.2.0
 """
 import logging
+from pathlib import Path
 import uuid
 from typing import Any
 
@@ -48,14 +49,36 @@ class QdrantStore(VectorStoreBase, SparseStoreBase):
             self.client = QdrantClient(":memory:")
             logger.info("QdrantStore → in-memory")
         elif mode == "local":
-            self.client = QdrantClient(path=config.qdrant.path)
-            logger.info(f"QdrantStore → local: {config.qdrant.path}")
+            import os
+            if os.path.isabs(config.qdrant.path):
+                resolved_path = config.qdrant.path
+            else:
+                # Anchor to project root (two levels up from retrieval/qdrant_store.py)
+                project_root = Path(__file__).resolve().parent.parent
+                resolved_path = str(project_root / config.qdrant.path)
+            os.makedirs(resolved_path, exist_ok=True)
+            self.client = QdrantClient(path=resolved_path)
+            logger.info(f"QdrantStore → local: {resolved_path}")
         else:
             self.client = QdrantClient(
                 url=config.qdrant.url,
-                api_key=config.qdrant.api_key.get_secret_value() or None,
+                api_key=config.qdrant.api_key or None,
             )
             logger.info(f"QdrantStore → remote: {config.qdrant.url}")
+
+    def close(self) -> None:
+        """Explicitly close the Qdrant client — flushes local SQLite to disk."""
+        try:
+            self.client.close()
+            logger.debug("QdrantStore closed")
+        except Exception as e:
+            logger.warning(f"QdrantStore close error: {e}")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
 
     # ── Collection ────────────────────────────────────────────────────────────
 
@@ -123,8 +146,16 @@ class QdrantStore(VectorStoreBase, SparseStoreBase):
             ))
 
         if points:
-            self.client.upsert(collection_name=self.collection, points=points)
-            logger.info(f"Upserted {len(points)} dense vectors")
+            try:
+                result = self.client.upsert(
+                    collection_name=self.collection,
+                    points=points,
+                    wait=True,   # wait for indexing to complete before returning
+                )
+                logger.info(f"Upserted {len(points)} dense vectors — status: {result.status}")
+            except Exception as e:
+                logger.error(f"Dense upsert FAILED: {e}")
+                raise
 
         self._upsert_sparse(chunks)
 
@@ -153,7 +184,11 @@ class QdrantStore(VectorStoreBase, SparseStoreBase):
         return list(encoder.embed(texts))
 
     def _upsert_sparse(self, chunks: list[Chunk]) -> None:
-        """Compute BM42 sparse vectors via FastEmbed and upsert."""
+        """
+        Compute BM42 sparse vectors via FastEmbed and update existing points.
+        Uses update_vectors() instead of upsert() to avoid overwriting
+        the dense vectors and payload that were already written.
+        """
         try:
             texts = [c.content for c in chunks if c.embedding]
             ids   = [
@@ -163,8 +198,9 @@ class QdrantStore(VectorStoreBase, SparseStoreBase):
 
             sparse_embeddings = self._encode_sparse(texts)
 
+            # Update sparse vectors only — do NOT touch payload or dense vectors
             points = [
-                models.PointStruct(
+                models.PointVectors(
                     id=point_id,
                     vector={
                         SPARSE_VECTOR: models.SparseVector(
@@ -172,12 +208,11 @@ class QdrantStore(VectorStoreBase, SparseStoreBase):
                             values=se.values.tolist(),
                         )
                     },
-                    payload={},
                 )
                 for point_id, se in zip(ids, sparse_embeddings)
             ]
-            self.client.upsert(collection_name=self.collection, points=points)
-            logger.debug(f"Upserted {len(points)} sparse vectors")
+            self.client.update_vectors(collection_name=self.collection, points=points)
+            logger.debug(f"Updated {len(points)} sparse vectors")
 
         except Exception as e:
             logger.warning(f"Sparse upsert failed ({e})")
